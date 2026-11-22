@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- An 80s PC "Turbo" button: beige bezel, red push button with a lightning bolt, green LED -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- bezel -->
+    <path android:fillColor="#D8D0BC"
+        android:pathData="M30,34h48a6,6 0,0 1,6 6v28a6,6 0,0 1,-6 6H30a6,6 0,0 1,-6 -6V40a6,6 0,0 1,6 -6z" />
+    <!-- button shadow + button -->
+    <path android:fillColor="#8E1B1B"
+        android:pathData="M33,41h34a4,4 0,0 1,4 4v20a4,4 0,0 1,-4 4H33a4,4 0,0 1,-4 -4V45a4,4 0,0 1,4 -4z" />
+    <path android:fillColor="#E0352B"
+        android:pathData="M33,39h34a4,4 0,0 1,4 4v20a4,4 0,0 1,-4 4H33a4,4 0,0 1,-4 -4V43a4,4 0,0 1,4 -4z" />
+    <!-- lightning bolt -->
+    <path android:fillColor="#FFD23F"
+        android:pathData="M53,43l-10,12h7l-4,10l11,-13h-7z" />
+    <!-- LED -->
+    <path android:fillColor="#3FB950"
+        android:pathData="M78,53m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
+</vector>

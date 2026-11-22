@@ -1,0 +1,10 @@
+{"scannedAt":"2026-11-22T14:50:00","errors":["battery : not supported"],"system":{"computerName":"CUSTOMER-PC","os":"Microsoft Windows 11 Home","displayVersion":"24H2","build":"26100.2314","manufacturer":"HP","model":"Pavilion 15","cpu":"Intel Core i5-1135G7","cores":4,"threads":8,"ramGB":7.8,"freeRamGB":1.2,"uptimeHours":212.5,"installDate":"2023-03-01","isLaptop":true},
+"volumes":[{"drive":"C","label":"","fs":"NTFS","sizeGB":237.4,"freeGB":9.8,"freePct":4.1,"health":"Healthy"}],
+"physicalDisks":[{"name":"WDC SN530 256GB","mediaType":"SSD","bus":"NVMe","health":"Healthy","wearPct":12,"tempC":41}],
+"cleanupPotentialGB":{"user_temp":3.2,"windows_temp":0.8,"update_cache":2.1,"browser_cache":1.4,"recycle_bin":5.5,"crash_dumps":0.6,"hiberfilGB":3.1,"windowsOldExists":false},
+"startup":[{"location":"HKCU_Run","name":"Spotify","command":"C:\\Users\\a\\AppData\\Roaming\\Spotify\\Spotify.exe /minimized","enabled":true},{"location":"HKLM_Run","name":"HPAudioSwitch","command":"C:\\Program Files\\HP\\HPAudioSwitch.exe","enabled":true},{"location":"HKCU_Run","name":"<img src=x onerror=alert(1)>","command":"evil","enabled":true}],
+"apps":[{"name":"Microsoft.BingNews","publisher":"Microsoft Corporation","likelyBloat":true},{"name":"SpotifyAB.SpotifyMusic","publisher":"Spotify AB","likelyBloat":true},{"name":"Microsoft.WindowsCalculator","publisher":"Microsoft Corporation","likelyBloat":false}],
+"programs":[{"name":"McAfee LiveSafe","publisher":"McAfee, LLC","version":"16.0","sizeMB":900},{"name":"Google Chrome","publisher":"Google LLC","version":"131"}],
+"events":{"errorsLast7Days":412,"unexpectedShutdowns30d":3,"bluescreens30d":1,"diskErrors30d":0,"appCrashes30d":["chrome.exe x4"]},
+"security":{"antivirusProducts":["McAfee LiveSafe","Windows Defender"],"realTime":false,"recentThreats":[]},
+"updates":{"rebootPending":true},"problemDevices":[],"battery":{"healthPct":71}}

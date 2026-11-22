@@ -1,0 +1,56 @@
+plugins {
+    id("com.android.application")
+}
+
+// Optional stable signing key (so updates install over each other).
+// Set TURBO_KEYSTORE (path) and TURBO_KEYSTORE_PASS; otherwise the debug key is used.
+val keystorePath: String? = System.getenv("TURBO_KEYSTORE")
+
+android {
+    namespace = "com.turbobutton.app"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "com.turbobutton.app"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = "0.1.0"
+    }
+
+    signingConfigs {
+        if (keystorePath != null) {
+            create("stable") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("TURBO_KEYSTORE_PASS")
+                keyAlias = "turbobutton"
+                keyPassword = System.getenv("TURBO_KEYSTORE_PASS")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = if (keystorePath != null) signingConfigs.getByName("stable") else signingConfigs.getByName("debug")
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    // The control page is shared with the Windows agent: one source of truth.
+    sourceSets {
+        getByName("main") {
+            assets.srcDir("../../agent/web")
+        }
+    }
+}
+
+dependencies {
+    implementation("androidx.webkit:webkit:1.12.1")
+    implementation("androidx.core:core:1.13.1")
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+}
