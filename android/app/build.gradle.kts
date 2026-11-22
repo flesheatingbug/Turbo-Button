@@ -50,6 +50,8 @@ android {
 }
 
 dependencies {
+    // Align kotlin-stdlib-jdk7/jdk8 pulled in by older libraries with kotlin-stdlib (avoids duplicate classes)
+    implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.8.22"))
     implementation("androidx.webkit:webkit:1.12.1")
     implementation("androidx.core:core:1.13.1")
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
