@@ -10,7 +10,7 @@ Both use the same control page, `agent/web/index.html`. The `.exe` serves it to 
 ## Getting the APK and EXE (no Android Studio needed)
 
 1. Create a **private** GitHub repo and push this folder to it.
-2. GitHub Actions builds both on every push. Open **Actions → latest run → Artifacts** to download `TurboButton-android` (the APK) and `TurboButton-windows` (the EXE).
+2. GitHub Actions builds both on every push. When the build succeeds they're published to the repo's **Releases → "Latest build"** page as `TurboButton.apk` and `TurboButton.exe`. You can open that page straight from your phone's browser while signed in to GitHub.
 3. Install the APK on your phone. You'll need to allow installs from your browser or file manager when prompted.
 
 ### Stable signing (recommended before relying on it)
