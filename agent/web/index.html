@@ -262,7 +262,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.5.0";
+const PAGE_VERSION = "0.6.0";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -306,7 +306,8 @@ function saveSessions() {
 }
 function saveState(sess = S) {
   if (!NATIVE || !sess.token) return;
-  try { localStorage.setItem("turbo.state." + sess.id, JSON.stringify({ plan: sess.plan, report: sess.report, form: sess.form, savedReport: sess.savedReport })); } catch {}
+  try { localStorage.setItem("turbo.state." + sess.id, JSON.stringify({ plan: sess.plan, report: sess.report, form: sess.form, savedReport: sess.savedReport, prevJobs: sess.prevJobs, keepFirst: sess.keepFirst })); } catch {}
+  saveRecord(sess);
 }
 function loadSessions() {
   if (NATIVE) {
@@ -972,9 +973,14 @@ async function poll(sess) {
     const jobs = (await api("/api/jobs", {}, sess)) || [];
     const scanDone = jobs.filter(j => j.action === "scan" && j.status === "done").length;
     const prevScanDone = sess.jobs.filter(j => j.action === "scan" && j.status === "done").length;
+    if (sess.status === "lost") {
+      try { const inf = await api("/api/info", {}, sess); if (inf.resumed && !sess.info?.resumed) toast(`${sess.name} is back after the restart — job resumed. Rescan to check the results.`, 7000); sess.info = inf; } catch {}
+    }
     sess.jobs = jobs; sess.status = "ok";
+    const sig = jobs.map(j => j.id + j.status).join();
+    if (sig !== sess._sig) { sess._sig = sig; saveRecord(sess); }
     if (scanDone !== prevScanDone) {
-      const sc = await api("/api/scan", {}, sess); sess.scan = sc.latest; sess.firstScan = sc.first;
+      const sc = await api("/api/scan", {}, sess); sess.scan = sc.latest; sess.firstScan = sess.keepFirst || sc.first;
       if (sess === S) { renderScan(); renderBA(); $("scanStatus").textContent = "Last scan: " + (S.scan?.scannedAt || ""); }
       if (sess.scan && scanDone === 1) toast(`${sess.name}: scan finished`);
     }
@@ -989,7 +995,7 @@ async function poll(sess) {
     sess.timer = setTimeout(() => poll(sess), busy ? 1500 : 6000);
   } catch (e) {
     sess.status = "lost"; renderPCs();
-    if (sess === S) $("pcName").textContent = (sess.name || "PC") + " — reconnecting…";
+    if (sess === S) { $("pcName").textContent = (sess.name || "PC") + " — reconnecting…"; updateFlow(); }
     sess.timer = setTimeout(() => poll(sess), 5000);
   }
 }
@@ -1014,16 +1020,18 @@ function resultLine(j) {
   return bits.join(" · ");
 }
 function renderJobs() {
-  const total = S.jobs.reduce((s, j) => s + (j.status === "done" && j.result?.freedBytes > 0 ? j.result.freedBytes : 0), 0);
+  const total = allJobs().reduce((s, j) => s + (j.status === "done" && j.result?.freedBytes > 0 ? j.result.freedBytes : 0), 0);
   $("freedTotal").textContent = total ? "Freed so far: " + fmtBytes(total) : "";
-  if (!S.jobs.length) { $("jobsView").innerHTML = '<div class="mut">No jobs yet.</div>'; return; }
+  const earlier = (S.prevJobs || []).filter(j => j.status === "done" || j.status === "failed");
+  const earlierHTML = earlier.length ? `<details style="margin-top:8px"><summary>Earlier in this job (${earlier.length})</summary>` + earlier.map(j => `<div class="job"><span class="st ${j.status}">${esc(j.status.toUpperCase())}</span> <b>${esc(j.title)}</b> <span class="params">${esc(Object.values(j.params || {}).join(", "))}</span>${j.status === "done" && resultLine(j) ? `<div style="color:var(--ok);font-size:13px">${esc(resultLine(j))}</div>` : ""}</div>`).join("") + `</details>` : "";
+  if (!S.jobs.length) { $("jobsView").innerHTML = '<div class="mut">No jobs yet.</div>' + earlierHTML; return; }
   $("jobsView").innerHTML = S.jobs.slice().reverse().map(j => `<div class="job"><div class="row"><span class="st ${j.status}">${j.status === "running" ? '<span class="spin"></span> ' : ""}${esc(j.status.toUpperCase())}</span>
     <b class="grow">${esc(j.title)}</b><span class="mut">${since(j.started, j.finished)}</span>${j.status === "queued" ? `<button class="b2 sm" data-cancel="${j.id}">Cancel</button>` : ""}</div>
     ${Object.keys(j.params || {}).length ? `<div class="params">${esc(JSON.stringify(j.params))}</div>` : ""}
     ${j.auto ? '<div class="mut">Added automatically</div>' : ""}
     ${j.status === "done" ? `<div style="color:var(--ok);font-size:13px">${esc(resultLine(j))}</div>` : ""}
     ${j.error ? `<div style="color:var(--bad);font-size:13px">${esc(j.error)}</div>` : ""}
-    ${(j.output || j.result) && j.action !== "scan" ? `<details><summary>Details</summary><pre>${esc((j.output || "") + (j.result ? "\n" + JSON.stringify(j.result, null, 1) : ""))}</pre></details>` : ""}</div>`).join("");
+    ${(j.output || j.result) && j.action !== "scan" ? `<details><summary>Details</summary><pre>${esc((j.output || "") + (j.result ? "\n" + JSON.stringify(j.result, null, 1) : ""))}</pre></details>` : ""}</div>`).join("") + earlierHTML;
   $("jobsView").querySelectorAll("[data-cancel]").forEach(b => b.onclick = async () => { try { await api(`/api/jobs/${b.dataset.cancel}/cancel`, { method: "POST" }); pollSoon(); } catch (e) { toast(e.message); } });
 }
 
@@ -1032,7 +1040,7 @@ const DEEP = [["windows_update", { mode: "check", drivers: true }], ["app_update
 const isDeepJob = (j) => DEEP.some(([a, p]) => a === j.action && Object.entries(p).every(([k, v]) => String(j.params?.[k]) === String(v)));
 function deepResults() {
   const out = {};
-  for (const j of S.jobs) if (isDeepJob(j) && (j.status === "done" || j.status === "failed")) out[j.action] = { status: j.status, result: j.result, error: j.error };
+  for (const j of allJobs()) if (isDeepJob(j) && (j.status === "done" || j.status === "failed")) out[j.action] = { status: j.status, result: j.result, error: j.error };
   return out;
 }
 $("deepBtn").onclick = async () => {
@@ -1061,16 +1069,16 @@ function updateFlow() {
   const connected = !!S.info && !S.ended && S.status !== "lost";
   const scans = S.jobs.filter(j => j.action === "scan");
   const scanBusy = scans.some(j => j.status === "queued" || j.status === "running");
-  const changes = S.jobs.filter(j => j.action !== "scan" && j.action !== "restore_point" && !isDeepJob(j) && j.status !== "cancelled");
-  const busy = changes.filter(j => j.status === "queued" || j.status === "running");
+  const changes = allJobs().filter(j => j.action !== "scan" && j.action !== "restore_point" && !isDeepJob(j) && j.status !== "cancelled");
+  const busy = changes.filter(j => !j.earlier && (j.status === "queued" || j.status === "running"));
   const lastChange = Math.max(0, ...changes.filter(j => j.finished).map(j => +new Date(j.finished)));
   const lastScan = Math.max(0, ...scans.filter(j => j.status === "done" && j.finished).map(j => +new Date(j.finished)));
   let step, text, btn = null, act = null;
   if (S.ended) { step = 6; text = "Session ended."; if (NATIVE) { btn = "Next PC"; act = () => location.reload(); } }
-  else if (S.info && S.status === "lost") { step = 0; text = `<b>${esc(S.name)}</b> isn't reachable — same Wi-Fi? Retrying…`; btn = "Retry"; act = () => { clearTimeout(S.timer); poll(S); }; }
+  else if (S.info && S.status === "lost") { step = 0; text = allJobs().some(j => j.action === "restart_pc" && j.status === "done") ? `<span class="spin"></span> <b>${esc(S.name)}</b> is restarting — Turbo Button reopens after login and reconnects.` : `<b>${esc(S.name)}</b> isn't reachable — same Wi-Fi? Retrying…`; btn = "Retry"; act = () => { clearTimeout(S.timer); poll(S); }; }
   else if (!connected) { step = 0; text = NATIVE ? "<b>① Connect:</b> run TurboButton.exe on the PC and scan its QR code." : "<b>① Connect:</b> open the link from the PC's QR code."; if (NATIVE) { btn = "Scan QR"; act = () => $("qrBtn").click(); } }
   else if (!S.scan) { step = 1; text = scanBusy ? '<span class="spin"></span> <b>② Scanning the PC…</b> about a minute.' : "<b>② Scan</b> the PC (read-only)."; if (!scanBusy) { btn = "Scan"; act = () => { show("scan"); startScan(); }; } }
-  else if (!S.plan) { step = 2; text = "<b>③ Plan:</b> Quick plan (no setup) or AI" + (aiReady() ? "." : " — set up AI under ⚙, or use Quick plan."); btn = "Plan"; act = () => show("plan"); }
+  else if (!S.plan && !changes.length) { step = 2; text = "<b>③ Plan:</b> Quick plan (no setup) or AI" + (aiReady() ? "." : " — set up AI under ⚙, or use Quick plan."); btn = "Plan"; act = () => show("plan"); }
   else if (!changes.length) { step = 3; text = "<b>④ Fix:</b> tick the fixes you approve, then press Run."; btn = "Plan"; act = () => show("plan"); }
   else if (busy.length) { step = 3; text = `<span class="spin"></span> <b>④ Fixing…</b> ${busy.length} left.`; btn = "Watch"; act = () => show("jobs"); }
   else if (lastScan < lastChange) { step = 4; text = scanBusy ? '<span class="spin"></span> <b>⑤ Rescanning…</b>' : "<b>⑤ Check:</b> rescan to confirm the results."; if (!scanBusy) { btn = "Rescan"; act = () => { startScan(); }; } }
@@ -1120,16 +1128,16 @@ function keyMetrics(s) {
     bootSec: s.bootPerformance?.recentBoots?.[0]?.bootSec, bootSlowdowns: (s.bootPerformance?.slowdowns || []).slice(0, 5),
     blueScreens: (s.crashes?.bugchecks90d || []).map(b => b.code + " " + bugInfo(b.code)), adwareSigns: adwareSigns(s), memoryTest: s.memoryTest };
 }
-function workLog() { return S.jobs.filter(j => j.action !== "scan" && j.status !== "queued").map(j => ({ action: j.title, params: j.params, status: j.status, reason: j.reason, result: j.result, error: j.error, started: j.started, finished: j.finished })); }
+function workLog() { return allJobs().filter(j => j.action !== "scan" && j.status !== "queued").map(j => ({ action: j.title, params: j.params, status: j.status, reason: j.reason, result: j.result, error: j.error, started: j.started, finished: j.finished })); }
 function reportUser() { return JSON.stringify({ beforeAfter: baRows(), deepChecks: deepResults(), before: keyMetrics(S.firstScan), after: S.firstScan?.scannedAt !== S.scan?.scannedAt ? keyMetrics(S.scan) : null, workLog: workLog(), technicianNotes: $("rNotes").value }); }
 function basicReport() {
-  const done = S.jobs.filter(j => j.action !== "scan" && j.status === "done");
+  const done = allJobs().filter(j => j.action !== "scan" && j.status === "done");
   const q = S.scan ? quickPlan(S.scan) : { findings: [], manual: [] };
-  const total = S.jobs.reduce((t, j) => t + (j.status === "done" && j.result?.freedBytes > 0 ? j.result.freedBytes : 0), 0);
+  const total = allJobs().reduce((t, j) => t + (j.status === "done" && j.result?.freedBytes > 0 ? j.result.freedBytes : 0), 0);
   return { headline: "Service report",
     customerSummary: ($("rNotes").value ? $("rNotes").value + " " : "") + `Completed ${done.length} maintenance task(s)` + (total ? `, freeing ${fmtBytes(total)} of disk space` : "") + ".",
     workDone: done.map(j => j.title + (Object.keys(j.params || {}).length ? " (" + Object.values(j.params).join(", ") + ")" : "") + (resultLine(j) ? " — " + resultLine(j) : "")),
-    issuesFound: q.findings.filter(f => f.severity !== "info").map(f => f.title + ": " + f.detail).concat(S.jobs.filter(j => j.status === "failed").map(j => "Could not complete: " + j.title + " (" + j.error + ")")),
+    issuesFound: q.findings.filter(f => f.severity !== "info").map(f => f.title + ": " + f.detail).concat(allJobs().filter(j => j.status === "failed").map(j => "Could not complete: " + j.title + " (" + j.error + ")")),
     recommendations: q.manual.map(m => m.title + " — " + m.detail), technicalNotes: "" };
 }
 function useReport(r, sess = S) {
@@ -1152,7 +1160,7 @@ $("reportUsePaste").onclick = () => {
 };
 function reportHTML() {
   const r = S.report, sys = S.scan?.system || S.firstScan?.system || {};
-  const total = S.jobs.reduce((s, j) => s + (j.status === "done" && j.result?.freedBytes > 0 ? j.result.freedBytes : 0), 0);
+  const total = allJobs().reduce((s, j) => s + (j.status === "done" && j.result?.freedBytes > 0 ? j.result.freedBytes : 0), 0);
   const li = (a) => (a || []).length ? "<ul>" + a.map(x => `<li>${esc(x)}</li>`).join("") + "</ul>" : "<p>None.</p>";
   const date = new Date().toLocaleString();
   return `<div style="font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif;color:#111;max-width:760px;margin:auto">
@@ -1165,7 +1173,7 @@ function reportHTML() {
   <h2 style="font-size:17px">Issues found</h2>${li(r.issuesFound)}
   <h2 style="font-size:17px">Recommendations</h2>${li(r.recommendations)}
   ${r.technicalNotes ? `<h2 style="font-size:17px">Technical notes</h2><p style="color:#444">${esc(r.technicalNotes)}</p>` : ""}
-  <h2 style="font-size:17px">Full log</h2><table style="border-collapse:collapse;width:100%;font-size:12px">${S.jobs.filter(j => j.action !== "scan" && j.status !== "queued").map(j =>
+  <h2 style="font-size:17px">Full log</h2><table style="border-collapse:collapse;width:100%;font-size:12px">${allJobs().filter(j => j.action !== "scan" && j.status !== "queued").map(j =>
     `<tr><td style="border-top:1px solid #ddd;padding:4px">${esc(j.finished ? new Date(j.finished).toLocaleTimeString() : "")}</td><td style="border-top:1px solid #ddd;padding:4px">${esc(j.title)} ${esc(Object.values(j.params || {}).join(" "))}</td><td style="border-top:1px solid #ddd;padding:4px">${esc(j.status)} ${esc(j.status === "done" ? resultLine(j) : j.error || "")}</td></tr>`).join("")}</table>
   </div>`;
 }
@@ -1233,6 +1241,33 @@ async function bootScreen() {
   el.innerHTML = esc(lines.join("\n")) + '<span class="cur">█</span>';
   await new Promise(r => setTimeout(r, skip ? 0 : 350));
   el.style.display = "none";
+}
+
+// ---------- job records: continue a job on the same PC later (matched by Windows machine ID) ----------
+const allJobs = (sess = S) => [...(sess.prevJobs || []), ...sess.jobs];
+function loadRecords() { try { return JSON.parse(localStorage.getItem("turbo.jobs") || "{}"); } catch { return {}; } }
+function saveRecord(sess = S) {
+  const mid = sess.info?.machineId; if (!NATIVE || !mid) return;
+  const recs = loadRecords();
+  recs[mid] = { machineId: mid, name: sess.name, token: sess.token, firstScan: sess.firstScan, plan: sess.plan, form: sess.form, savedReport: sess.savedReport,
+    jobs: allJobs(sess).filter(j => j.action !== "scan").map(j => ({ ...j, output: "" })), updated: Date.now() };
+  const keep = Object.values(recs).filter(r => Date.now() - r.updated < 30 * 864e5).sort((a, b) => b.updated - a.updated).slice(0, 20);
+  try { localStorage.setItem("turbo.jobs", JSON.stringify(Object.fromEntries(keep.map(r => [r.machineId, r])))); }
+  catch { try { localStorage.setItem("turbo.jobs", JSON.stringify({ [mid]: { ...recs[mid], firstScan: null } })); } catch {} }
+}
+function dropRecord(mid) { if (!mid) return; const recs = loadRecords(); delete recs[mid]; try { localStorage.setItem("turbo.jobs", JSON.stringify(recs)); } catch {} }
+function offerContinue(sess) {
+  const mid = sess.info?.machineId; if (!NATIVE || !mid || sess.info.resumed || sess.prevJobs) return;
+  const r = loadRecords()[mid];
+  if (!r || r.token === sess.token || Date.now() - r.updated > 14 * 864e5) return;
+  const done = (r.jobs || []).filter(j => j.status === "done").length;
+  const when = new Date(r.updated).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
+  if (confirm(`Continue the previous job on ${r.name}?\n\nLast worked on ${when}: ${done} fix(es) done${r.plan ? ", plan saved" : ""}.\n\nOK = continue (keeps the "before" scan, plan, work log and report details)\nCancel = start fresh`)) {
+    Object.assign(sess, { keepFirst: r.firstScan || null, prevJobs: (r.jobs || []).map(j => ({ ...j, earlier: true })), plan: r.plan || null, form: r.form || {}, savedReport: r.savedReport || null, report: null });
+    if (r.firstScan) sess.firstScan = r.firstScan;
+    toast(`Continuing the job on ${r.name}. Rescan to compare with the first visit.`, 6000);
+  } else dropRecord(mid);
+  saveState(sess); saveRecord(sess);
 }
 
 // ---------- sessions: connect, switch, end ----------
@@ -1311,6 +1346,7 @@ $("endBtn").onclick = async () => {
   try { await api("/api/finish", { method: "POST" }); } catch {}
   const ended = S;
   if (NATIVE) {
+    dropRecord(ended.info?.machineId);
     dropSession(ended);
     toast(`${ended.name}: session ended. Its report is saved on this phone.`, 5000);
     show(SESS.length ? "setup" : "ended");
@@ -1349,8 +1385,10 @@ async function startSession(sess) {
   clearTimeout(sess.timer);
   try {
     const info = await api("/api/info", {}, sess);
+    const fresh = !sess.info;
     sess.info = info; sess.name = info.computer; sess.ended = false; sess.status = "ok";
-    const sc = await api("/api/scan", {}, sess); sess.scan = sc.latest; sess.firstScan = sc.first;
+    if (fresh) offerContinue(sess);
+    const sc = await api("/api/scan", {}, sess); sess.scan = sc.latest; sess.firstScan = sess.keepFirst || sc.first;
     sess.jobs = (await api("/api/jobs", {}, sess)) || [];
     if (!sess.scan && !sess.jobs.some(j => j.action === "scan")) {   // first scan starts automatically (read-only)
       await api("/api/scan", { method: "POST" }, sess);

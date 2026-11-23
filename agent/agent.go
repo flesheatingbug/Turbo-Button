@@ -26,7 +26,7 @@ var scriptFS embed.FS
 //go:embed web/index.html
 var indexHTML []byte
 
-const Version = "0.5.0"
+const Version = "0.6.0"
 
 type Job struct {
 	ID       int             `json:"id"`
@@ -73,6 +73,10 @@ type Agent struct {
 	started      time.Time
 	phoneSeen    bool
 	OnEvent      func(Event)
+	machineID    string
+	resumed      bool
+	resumeArmed  bool
+	port         int
 }
 
 func (a *Agent) emit(e Event) {
@@ -183,6 +187,19 @@ func (a *Agent) worker() {
 			a.restoreTried = true
 			a.mu.Unlock()
 		}
+		switch j.Action {
+		case "restart_pc", "defender_offline_scan":
+			if err := a.prepareResume(a.port); err != nil {
+				a.emit(Event{Kind: "line", Job: j, Text: "Could not set up auto-resume: " + err.Error() + " (run TurboButton.exe again after the restart)"})
+			} else {
+				a.emit(Event{Kind: "line", Job: j, Text: "Auto-resume armed: Turbo Button reopens after the restart and the phone reconnects."})
+			}
+		case "cancel_restart":
+			cancelResume()
+			a.mu.Lock()
+			a.resumeArmed = false
+			a.mu.Unlock()
+		}
 		a.run(j)
 	}
 }
@@ -209,11 +226,20 @@ func (a *Agent) run(j *Job) {
 	j.Finished = &end
 	if err != nil {
 		j.Status, j.Error = "failed", err.Error()
+		armed := a.resumeArmed
 		a.mu.Unlock()
 		a.emit(Event{Kind: "failed", Job: j, Text: err.Error()})
+		if armed {
+			a.writeResumeState(a.port)
+		}
 		return
 	}
 	j.Status, j.Result = "done", res
+	defer func() {
+		if a.resumeArmed {
+			a.writeResumeState(a.port)
+		}
+	}()
 	defer a.emit(Event{Kind: "done", Job: j})
 	defer a.mu.Unlock()
 	if name == "scan" {
@@ -331,6 +357,7 @@ func (a *Agent) Handler() http.Handler {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		writeJSON(w, map[string]any{"agent": "Turbo Button", "version": Version, "computer": host, "catalog": Catalog,
+			"machineId": a.machineID, "resumed": a.resumed,
 			"autoRestorePoint": a.autoRestore, "restorePointDone": a.restoreTried, "startedAt": a.started,
 			"protectedServices": protectedServiceList(), "protectedAppPrefixes": protectedAppPrefixes})
 	}))

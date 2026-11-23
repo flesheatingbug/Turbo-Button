@@ -32,8 +32,20 @@ func main() {
 		waitEnter()
 		return
 	}
+	a.machineID = machineID()
+	listenPort := port
+	var resumeErr error
+	if hasArg("--resume") {
+		var st *resumeState
+		if st, resumeErr = loadResume(); resumeErr == nil {
+			a.restoreFrom(st)
+			if st.Port > 0 {
+				listenPort = st.Port
+			}
+		}
+	}
 
-	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
+	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", listenPort))
 	if err != nil {
 		ln, err = net.Listen("tcp", "0.0.0.0:0")
 	}
@@ -44,11 +56,24 @@ func main() {
 		return
 	}
 	p := ln.Addr().(*net.TCPAddr).Port
+	a.port = p
 	addFirewallRule(p)
 
-	cleanup := func() {
+	cleanup := func(byPhone bool) {
+		a.mu.Lock()
+		armed := a.resumeArmed
+		a.mu.Unlock()
+		if armed && !byPhone {
+			// Windows is closing us for the restart we started: keep the resume files.
+			fmt.Println("\n  > RESTARTING — Turbo Button will reopen after you log back in.")
+			removeFirewallRule()
+			a.Cleanup()
+			return
+		}
 		fmt.Println("\n  > ENDING SESSION: removing firewall rule and temporary files...")
 		removeFirewallRule()
+		cancelResume()
+		removeAgentCopy()
 		a.Cleanup()
 		fmt.Println("  > DONE. Nothing from Turbo Button is left on this PC (any restore point and approved changes stay).")
 		if vt {
@@ -70,15 +95,22 @@ func main() {
 	stopAwake := keepAwake()
 	defer stopAwake()
 	printBanner(url, ips, p, vt)
+	if a.resumed {
+		fmt.Println(con.paint(cPink, "  > SESSION RESUMED AFTER RESTART — the phone reconnects by itself. Rescan to check the results."))
+	} else if resumeErr != nil {
+		fmt.Println(con.paint(cYellow, "  > Could not resume the previous session ("+resumeErr.Error()+") — starting a new one."))
+	}
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	byPhone := false
 	select {
 	case <-sig:
 	case <-a.finishing:
+		byPhone = true
 	}
 	srv.Close()
-	cleanup()
+	cleanup(byPhone)
 	if !mockMode() {
 		time.Sleep(2 * time.Second)
 	}
@@ -179,6 +211,15 @@ func lanIPs() []string {
 		ips = append([]string{pref}, ips...)
 	}
 	return ips
+}
+
+func hasArg(a string) bool {
+	for _, x := range os.Args[1:] {
+		if x == a {
+			return true
+		}
+	}
+	return false
 }
 
 func waitEnter() {

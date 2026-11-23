@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 )
 
@@ -77,4 +78,21 @@ func mockRun(name string, env map[string]string, onLine func(string)) (json.RawM
 	}
 	out, _ := json.Marshal(map[string]any{"mock": true, "action": name, "env": env, "freedBytes": 123456789})
 	return out, nil
+}
+
+func resumeDir() string {
+	if d := os.Getenv("TURBO_RESUME_DIR"); d != "" {
+		return d
+	}
+	return filepath.Join(os.TempDir(), "turbobutton-resume")
+}
+func lockDown(string)             {}
+func scheduleResume(string) error { return nil }
+func unscheduleResume()           {}
+func deleteDirAfterExit(string)   {}
+func machineID() string {
+	if id := os.Getenv("TURBO_MOCK_ID"); id != "" {
+		return id
+	}
+	return "mock-machine-1"
 }

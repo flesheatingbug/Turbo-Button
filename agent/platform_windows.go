@@ -102,3 +102,58 @@ func keepAwake() func() {
 	var once sync.Once
 	return func() { once.Do(func() { close(done) }) }
 }
+
+const resumeTask = "TurboButtonResume"
+
+func resumeDir() string {
+	pd := os.Getenv("ProgramData")
+	if pd == "" {
+		pd = `C:\ProgramData`
+	}
+	return filepath.Join(pd, "TurboButton")
+}
+
+// lockDown limits a file to Administrators and SYSTEM (well-known SIDs, so it works on any Windows language).
+func lockDown(path string) {
+	c := exec.Command("icacls", path, "/inheritance:r", "/grant:r", "*S-1-5-32-544:F", "*S-1-5-18:F")
+	hideWindow(c)
+	c.Run()
+}
+
+// scheduleResume creates a one-time task that reopens the agent (elevated) at the next logon.
+func scheduleResume(exe string) error {
+	c := exec.Command("schtasks", "/Create", "/TN", resumeTask, "/TR", `"`+exe+`" --resume`, "/SC", "ONLOGON", "/RL", "HIGHEST", "/F")
+	hideWindow(c)
+	if out, err := c.CombinedOutput(); err != nil {
+		return fmt.Errorf("schtasks: %v %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func unscheduleResume() {
+	c := exec.Command("schtasks", "/Delete", "/TN", resumeTask, "/F")
+	hideWindow(c)
+	c.Run()
+}
+
+// deleteDirAfterExit removes a folder we are running from, a few seconds after we exit.
+func deleteDirAfterExit(dir string) {
+	c := exec.Command("cmd", "/c", "ping 127.0.0.1 -n 4 >nul & rmdir /s /q \""+dir+"\"")
+	hideWindow(c)
+	c.Start()
+}
+
+// machineID is Windows' per-install machine GUID: lets the phone recognise the same PC later.
+func machineID() string {
+	c := exec.Command("reg", "query", `HKLM\SOFTWARE\Microsoft\Cryptography`, "/v", "MachineGuid")
+	hideWindow(c)
+	out, err := c.Output()
+	if err != nil {
+		return ""
+	}
+	f := strings.Fields(string(out))
+	if len(f) == 0 {
+		return ""
+	}
+	return strings.ToLower(f[len(f)-1])
+}

@@ -57,6 +57,11 @@ The report also has a **Basic report (no AI)** button. It builds the report from
 
 Connect as many PCs as you like: on the **PCs** tab, tap **Scan QR code** for each one. Every PC keeps running its own scan and fixes in the background, the list shows live status for each, and the name in the header switches between them. PCs, plans and report drafts are saved on the phone, so closing the app loses nothing; a PC that drops off the network shows "Not reachable" and reconnects by itself.
 
+## Resuming jobs
+
+- **After a restart that Turbo Button starts** (Restart the PC, Defender offline scan): it saves the session and reopens by itself when you log back in, with the same session key. The phone reconnects on its own, and the "before" scan and work log carry on. While the restart is pending it leaves three things on the PC: a copy of itself, a session file readable only by administrators, and a one-time logon task, all under `C:\ProgramData\TurboButton`. They're removed the moment it reopens, or when the session ends.
+- **Coming back later** (agent closed, a restart you didn't start, the next day): run TurboButton.exe again and scan the new QR code. The app recognises the PC by its Windows machine ID and offers to continue the previous job, keeping the first visit's "before" scan, the plan, the work log and the report details. Unfinished jobs are kept on the phone for 14 days. Pressing **End** marks the job finished.
+
 ## Look
 
 The phone and the PC window use a retro green-phosphor terminal style by default. You can switch to amber or the modern look under ⚙ → Look.
