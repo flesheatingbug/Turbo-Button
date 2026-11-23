@@ -128,6 +128,7 @@ public final class Updater {
                 if (r.build <= have) { if (manual) toast(act, "You have the latest version (build " + have + ")."); return; }
                 if (!manual && p.getInt("skipped", 0) == r.build) return;
                 new AlertDialog.Builder(act)
+                        .setIcon(R.mipmap.ic_launcher)
                         .setTitle("Update available")
                         .setMessage("Build " + r.build + " is ready. You have build " + have + ".")
                         .setPositiveButton("Download and install", (d, w) -> download(act, r))
@@ -145,7 +146,7 @@ public final class Updater {
     }
 
     private static void download(Activity act, Info r) {
-        AlertDialog dlg = new AlertDialog.Builder(act).setTitle("Downloading update").setMessage("Starting…").setCancelable(false).create();
+        AlertDialog dlg = new AlertDialog.Builder(act).setIcon(R.mipmap.ic_launcher).setTitle("Downloading update").setMessage("Starting…").setCancelable(false).create();
         dlg.show();
         new Thread(() -> {
             try {
@@ -177,7 +178,7 @@ public final class Updater {
                 act.runOnUiThread(() -> {
                     dlg.dismiss();
                     if (!sameKey) {
-                        new AlertDialog.Builder(act).setTitle("Reinstall needed once")
+                        new AlertDialog.Builder(act).setIcon(R.mipmap.ic_launcher).setTitle("Reinstall needed once")
                                 .setMessage("This build is signed with a different key from the installed app, so Android can't update it in place. Uninstall Turbo Button, then install the new build from the release page. Saved reports are removed with the app, so share any you need first. Updates after that install normally.")
                                 .setPositiveButton("Open release page", (d, w) -> {
                                     try { act.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/" + REPO + "/releases/tag/" + TAG))); } catch (Exception ignored) { }
@@ -237,9 +238,24 @@ public final class Updater {
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         nm.notify(43, new Notification.Builder(ctx, "updates")
                 .setSmallIcon(R.drawable.ic_stat_update)
+                .setLargeIcon(appIcon(ctx))
+                .setColor(0xFF33FF66)
                 .setContentTitle("Turbo Button update available")
                 .setContentText("Build " + build + " is ready. Tap to install.")
                 .setContentIntent(pi).setAutoCancel(true).build());
+    }
+
+    /** The launcher icon as a bitmap (it's an adaptive icon, so it has to be drawn). */
+    private static android.graphics.Bitmap appIcon(Context ctx) {
+        try {
+            android.graphics.drawable.Drawable d = ctx.getPackageManager().getApplicationIcon(ctx.getPackageName());
+            int px = (int) (64 * ctx.getResources().getDisplayMetrics().density);
+            android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(px, px, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas c = new android.graphics.Canvas(b);
+            d.setBounds(0, 0, px, px);
+            d.draw(c);
+            return b;
+        } catch (Exception e) { return null; }
     }
 
     /** (Re)schedules the twice-daily background check, or cancels it when auto-check is off. */

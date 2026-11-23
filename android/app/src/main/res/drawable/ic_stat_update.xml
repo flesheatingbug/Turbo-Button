@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Notification icon: white silhouette of the Turbo Button monitor with its lightning bolt -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M11,3h2v10.2l3.6,-3.6 1.4,1.4L12,17 6,11l1.4,-1.4L11,13.2zM5,19h14v2H5z"/>
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="56" android:viewportHeight="56">
+    <group android:translateX="-26" android:translateY="-27">
+        <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+            android:pathData="M34,33h40a5,5 0,0 1,5 5v29a5,5 0,0 1,-5 5H34a5,5 0,0 1,-5 -5V38a5,5 0,0 1,5 -5z M37.2,37.5h33.6a1.9,1.9 0,0 1,1.9 1.9v25a1.9,1.9 0,0 1,-1.9 1.9H37.2a1.9,1.9 0,0 1,-1.9 -1.9V39.4a1.9,1.9 0,0 1,1.9 -1.9z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M57.2,40L46.6,54.6H53.2L50.2,64.5L61.8,49.9H54.9L59.2,40Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M50,71h8v5h-8z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M43.4,75h21.2a2,2 0,0 1,2 2v0a2,2 0,0 1,-2 2H43.4a2,2 0,0 1,-2 -2v0a2,2 0,0 1,2 -2z" />
+    </group>
 </vector>
