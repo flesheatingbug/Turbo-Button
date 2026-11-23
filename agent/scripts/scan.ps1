@@ -150,7 +150,8 @@ Section 'security' {
   foreach ($t in $th) { $t['name'] = $names["$($t.threatId)"] }
   [ordered]@{ antivirusProducts = $av; defenderEnabled = $mp.AntivirusEnabled; realTime = $mp.RealTimeProtectionEnabled; tamperProtected = $mp.IsTamperProtected
     signaturesUpdated = if ($mp.AntivirusSignatureLastUpdated) { $mp.AntivirusSignatureLastUpdated.ToString('s') } else { $null }
-    quickScanAgeDays = $mp.QuickScanAge; fullScanAgeDays = $mp.FullScanAge; recentThreats = $th
+    quickScanAgeDays = if ($mp.QuickScanAge -ge 100000) { 'never' } else { $mp.QuickScanAge }
+    fullScanAgeDays = if ($mp.FullScanAge -ge 100000) { 'never' } else { $mp.FullScanAge }; recentThreats = $th
     uacEnabled = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -ErrorAction SilentlyContinue).EnableLUA
     firewall = @(Get-NetFirewallProfile -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name)=$($_.Enabled)" }) -join ', ' }
 }

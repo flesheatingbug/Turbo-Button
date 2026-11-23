@@ -26,7 +26,7 @@ var scriptFS embed.FS
 //go:embed web/index.html
 var indexHTML []byte
 
-const Version = "0.4.0"
+const Version = "0.4.1"
 
 type Job struct {
 	ID       int             `json:"id"`

@@ -210,7 +210,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.4.0";
+const PAGE_VERSION = "0.4.1";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -334,6 +334,8 @@ async function askAI(system, user, maxTokens = 8000, schema = null) {
 // Tolerant JSON reader for replies pasted from chat apps (ChatGPT, Claude, Gemini…):
 // finds the JSON among other text, fixes smart quotes/trailing commas/comments, and rescues cut-off replies.
 function cleanJSONText(t) {
+  // Chat apps copy rendered text with Markdown escapes (\[ \] \_ \*): drop any backslash that isn't a valid JSON escape.
+  t = t.replace(/\\(.)/g, (m, c) => '"\\/bfnrtu'.includes(c) ? m : c);
   return t.replace(/[“”„‟″]/g, '"').replace(/[‘’‚‛′]/g, "'").replace(/ /g, " ")
     .replace(/^\s*\/\/.*$/gm, "").replace(/,\s*([}\]])/g, "$1");
 }
@@ -541,6 +543,7 @@ Rules:
 - program_uninstall only for clear junk/trialware/adware (askCustomer true unless it is obviously malicious); use the exact name from scan.programs. If uninstall is "none"/"interactive" with no winget, put it in "manual" instead.
 - Adware: hijacked browser search/homepage, forced browser policies, odd proxies, manual DNS to unknown servers and hosts-file redirects are red flags. NEVER propose remove_browser_policies, reset_dns or reset_proxy on a domain-joined (business) PC; elsewhere set askCustomer true.
 - Blue screens: interpret bugcheck codes (driver vs RAM vs disk vs GPU vs hardware) in findings; propose schedule_memory_test for RAM-type codes and schedule_chkdsk for disk-type codes.
+- Defender scan ages of "never" mean no scan was ever recorded. A hosts file with hundreds of entries is usually a deliberate block list: mention it, don't propose reset_hosts unless it blocks security/update sites.
 - Slow boot: name the worst offenders from bootPerformance.slowdowns.
 - If DEEP CHECK RESULTS are given, use them: corruption from sfc_verify/dism_check → dism_restore then sfc; chkdsk problems → schedule_chkdsk; Defender detections → critical finding (and defender_offline_scan if serious); available updates → windows_update / app_updates install; disk_usage → say what fills the disk. Don't re-propose the read-only checks themselves.
 - Any action that needs a restart (windows_update install, network_reset, schedule_*) means proposing restart_pc {minutes:"1"} as the VERY LAST proposal with askCustomer true. Never propose defender_offline_scan unless malware is strongly suspected (it restarts immediately).
@@ -730,7 +733,8 @@ function quickPlan(s) {
   const sigAgeDays = sec.signaturesUpdated ? (Date.now() - new Date(sec.signaturesUpdated)) / 864e5 : 99;
   if (sec.defenderEnabled !== false && !others.length) {
     if (sigAgeDays > 2) prop("defender_update", {}, "Malware definitions are out of date.");
-    if ((sec.quickScanAgeDays ?? 99) > 7 || (sec.recentThreats || []).length) prop("defender_scan", { type: "quick" }, "No recent malware scan.");
+    const qAge = typeof sec.quickScanAgeDays === "number" && sec.quickScanAgeDays < 100000 ? sec.quickScanAgeDays : 99;
+    if (qAge > 7 || (sec.recentThreats || []).length) prop("defender_scan", { type: "quick" }, "No recent malware scan.");
   }
   if (sec.uacEnabled === 0) find("critical", "UAC is turned off", "User Account Control is disabled. Turn it back on in Control Panel → User Accounts.");
 
@@ -778,9 +782,11 @@ function quickPlan(s) {
   if (ad.proxy && !business) { find("warn", "Proxy configured", ad.proxy); prop("reset_proxy", {}, "A proxy can redirect browsing through adware.", "medium", true); }
   if (ad.dns.length && !business) { find("warn", "Manually set DNS servers", ad.dns.join("; ")); prop("reset_dns", {}, "Unknown DNS servers can redirect websites.", "medium", true); }
   const secBlock = ad.hosts.filter(h => /(malwarebytes|eset|kaspersky|avast|avg\.|norton|mcafee|bitdefender|sophos|virustotal|microsoft\.com|windowsupdate|update\.microsoft|emsisoft|hitmanpro|adwcleaner)/i.test(h));
+  const bigList = ad.hosts.length > 100;
   if (secBlock.length) find("critical", "Hosts file blocks security/update sites", secBlock.slice(0, 5).join("; ") + " — typical of malware.");
+  else if (bigList) find("info", `Hosts file has a large block list (${ad.hosts.length} entries)`, "Looks deliberate (ad/telemetry/app blocking). Left alone — ask the customer before changing it.");
   else if (ad.hosts.length) { find(ad.hosts.length > 5 ? "warn" : "info", "Hosts file has entries", ad.hosts.slice(0, 5).join("; ") + (ad.hosts.length > 5 ? " …" : "")); }
-  if (secBlock.length || (ad.hosts.length && !business)) prop("reset_hosts", {}, secBlock.length ? "The hosts file blocks security/update sites — restore the default. A backup is kept." : "Hosts entries can block or redirect sites. A backup is kept.", "medium", !secBlock.length);
+  if (secBlock.length || (ad.hosts.length && !bigList && !business)) prop("reset_hosts", {}, secBlock.length ? "The hosts file blocks security/update sites — restore the default. A backup is kept." : "Hosts entries can block or redirect sites. A backup is kept.", "medium", !secBlock.length);
 
   // Boot speed, blue screens, performance
   const lastBoot = s.bootPerformance?.recentBoots?.[0];
