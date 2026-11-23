@@ -157,3 +157,34 @@ func machineID() string {
 	}
 	return strings.ToLower(f[len(f)-1])
 }
+
+// openScreen shows the customer screen in an app-style Edge (or Chrome) window with its own throwaway profile.
+// Edge de-elevates itself on launch, so the window runs as the normal user.
+func openScreen(url, workDir string) error {
+	var cands []string
+	for _, base := range []string{os.Getenv("ProgramFiles(x86)"), os.Getenv("ProgramFiles"), os.Getenv("LOCALAPPDATA")} {
+		if base == "" {
+			continue
+		}
+		cands = append(cands, filepath.Join(base, `Microsoft\Edge\Application\msedge.exe`), filepath.Join(base, `Google\Chrome\Application\chrome.exe`))
+	}
+	for _, exe := range cands {
+		if _, err := os.Stat(exe); err != nil {
+			continue
+		}
+		prof := filepath.Join(workDir, "screen-profile")
+		c := exec.Command(exe, "--app="+url, "--user-data-dir="+prof, "--window-size=1100,780", "--no-first-run",
+			"--no-default-browser-check", "--disable-features=Translate,msEdgeSidebarV2,msHubApps", "--force-dark-mode")
+		return c.Start()
+	}
+	return fmt.Errorf("no Edge or Chrome found")
+}
+
+// closeScreen closes the customer screen window (found by its private profile folder).
+func closeScreen(workDir string) {
+	dir := strings.ReplaceAll(filepath.Join(workDir, "screen-profile"), "'", "''")
+	ps := "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe' or Name='chrome.exe'\" | Where-Object { $_.CommandLine -like '*" + dir + "*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+	c := exec.Command(powershellPath(), "-NoProfile", "-NonInteractive", "-Command", ps)
+	hideWindow(c)
+	c.Run()
+}

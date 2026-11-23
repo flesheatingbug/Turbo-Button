@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -26,7 +27,10 @@ var scriptFS embed.FS
 //go:embed web/index.html
 var indexHTML []byte
 
-const Version = "0.6.0"
+//go:embed web/screen.html
+var screenHTML []byte
+
+const Version = "0.7.0"
 
 type Job struct {
 	ID       int             `json:"id"`
@@ -77,6 +81,18 @@ type Agent struct {
 	resumed      bool
 	resumeArmed  bool
 	port         int
+	viewToken    string
+	controlURL   string
+	qrSVG        string
+}
+
+func isLocal(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (a *Agent) emit(e Event) {
@@ -94,8 +110,10 @@ func NewAgent() (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	vb := make([]byte, 16)
+	rand.Read(vb)
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &Agent{token: hex.EncodeToString(b), queue: make(chan *Job, 256), workDir: wd, autoRestore: true,
+	a := &Agent{token: hex.EncodeToString(b), viewToken: hex.EncodeToString(vb), queue: make(chan *Job, 256), workDir: wd, autoRestore: true,
 		ctx: ctx, cancel: cancel, finishing: make(chan struct{}), started: time.Now(), lastSeen: time.Now()}
 	go a.worker()
 	return a, nil
@@ -351,6 +369,33 @@ func (a *Agent) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Write(indexHTML)
+	})
+	// Customer screen on the PC itself: read-only, local connections only, own view key.
+	mux.HandleFunc("GET /screen", func(w http.ResponseWriter, r *http.Request) {
+		if !isLocal(r) {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Write(screenHTML)
+	})
+	mux.HandleFunc("GET /screen/state", func(w http.ResponseWriter, r *http.Request) {
+		if !isLocal(r) || subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("v")), []byte(a.viewToken)) != 1 {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		host, _ := os.Hostname()
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		jobs := a.jobs
+		if jobs == nil {
+			jobs = []*Job{}
+		}
+		writeJSON(w, map[string]any{"computer": host, "version": Version, "phone": a.phoneSeen, "resumed": a.resumed,
+			"url": a.controlURL, "qr": a.qrSVG, "jobs": jobs, "startedAt": a.started})
 	})
 	mux.HandleFunc("GET /api/info", a.authed(func(w http.ResponseWriter, r *http.Request) {
 		host, _ := os.Hostname()

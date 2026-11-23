@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Turbo Button</title>
+<style>
+  :root { --bg:#020b05; --panel:#03130a; --line:#0e4a24; --text:#5dff87; --mut:#2c9c50; --hi:#c4ffd4; --warn:#ffc933; --bad:#ff5b4a; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.45 "Cascadia Mono","Consolas","Lucida Console",monospace; text-shadow:0 0 6px rgba(93,255,135,.5);
+    overflow:hidden; user-select:none; cursor:default; }
+  body::before { content:""; position:fixed; inset:0; pointer-events:none; z-index:20;
+    background:repeating-linear-gradient(to bottom, rgba(0,0,0,.3) 0, rgba(0,0,0,.3) 1px, transparent 1px, transparent 3px); animation:flick 7s infinite; }
+  body::after { content:""; position:fixed; inset:0; pointer-events:none; z-index:21; background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.7) 100%); }
+  @keyframes flick { 0%,100% { opacity:.92 } 50% { opacity:.92 } 51% { opacity:.7 } 52% { opacity:.92 } }
+  @keyframes blink { 50% { opacity:0 } }
+  .wrap { height:100%; display:grid; grid-template-rows:auto 1fr auto; gap:14px; padding:18px 22px; }
+  .top { display:flex; align-items:center; gap:16px; border-bottom:1px solid var(--line); padding-bottom:10px; }
+  .logo { font-weight:800; letter-spacing:.22em; font-size:22px; color:var(--hi); }
+  .logo .c { animation:blink 1s steps(1) infinite; }
+  .grow { flex:1; }
+  .mut { color:var(--mut); }
+  .turbo { border:1px solid var(--text); padding:2px 10px; letter-spacing:.12em; }
+  .turbo b { color:var(--bad); text-shadow:0 0 8px var(--bad); }
+  .main { display:grid; grid-template-columns:1fr 300px; gap:18px; min-height:0; }
+  .panel { border:1px solid var(--line); background:var(--panel); padding:14px 16px; box-shadow:inset 0 0 18px rgba(93,255,135,.06); min-height:0; }
+  .panel h2 { margin:0 0 10px; font-size:14px; letter-spacing:.18em; color:var(--mut); text-transform:uppercase; }
+  .panel h2::before { content:"▌ "; color:var(--text); }
+  .left { display:grid; grid-template-rows:auto auto 1fr; gap:14px; min-height:0; }
+  .status { font-size:26px; color:var(--hi); letter-spacing:.06em; }
+  .now-title { font-size:20px; color:var(--hi); }
+  .why { color:var(--mut); margin-top:4px; }
+  .bar { margin-top:12px; height:18px; border:1px solid var(--text); position:relative; overflow:hidden; }
+  .bar i { position:absolute; top:2px; bottom:2px; width:30%; background:repeating-linear-gradient(90deg, var(--text) 0 10px, transparent 10px 14px); animation:slide 1.6s linear infinite; }
+  @keyframes slide { from { left:-30% } to { left:100% } }
+  .lines { margin-top:10px; color:var(--mut); font-size:14px; white-space:pre-wrap; max-height:4.4em; overflow:hidden; }
+  .done-list { overflow:hidden; font-size:15px; }
+  .done-list div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ok { color:var(--text); } .fail { color:var(--bad); text-shadow:0 0 6px rgba(255,91,74,.5); }
+  .right { display:grid; grid-template-rows:auto auto 1fr; gap:14px; min-height:0; }
+  .qr { background:#fff; padding:10px; text-shadow:none; position:relative; z-index:22; }
+  .qr svg { display:block; width:100%; height:auto; }
+  .stat { display:flex; justify-content:space-between; margin:6px 0; }
+  .stat b { color:var(--hi); font-size:20px; }
+  .warn { border:1px solid var(--warn); color:var(--warn); text-shadow:0 0 6px rgba(255,201,51,.5); padding:10px 12px; text-align:center; letter-spacing:.08em; }
+  .warn b { animation:blink 1.2s steps(1) infinite; }
+  .log { border-top:1px solid var(--line); padding-top:8px; font-size:13px; color:var(--mut); height:7.2em; overflow:hidden; white-space:pre; }
+  #boot { position:fixed; inset:0; z-index:30; background:var(--bg); padding:40px; font-size:18px; white-space:pre-wrap; color:var(--hi); }
+  #end { position:fixed; inset:0; z-index:25; background:rgba(2,11,5,.95); display:none; align-items:center; justify-content:center; flex-direction:column; text-align:center; gap:10px; font-size:24px; color:var(--hi); }
+</style>
+</head>
+<body>
+<div id="boot"></div>
+<div id="end"><div>SESSION COMPLETE</div><div class="mut" style="font-size:16px">Thank you — this window will close.</div></div>
+<div class="wrap">
+  <div class="top">
+    <div class="logo">&gt; TURBO BUTTON<span class="c">█</span></div>
+    <div class="grow mut" id="pc"></div>
+    <div class="mut" id="clock"></div>
+    <div class="turbo">[<b>■</b>] TURBO ON</div>
+  </div>
+  <div class="main">
+    <div class="left">
+      <div class="panel"><h2>Status</h2><div class="status" id="status">STARTING…</div><div class="mut" id="sub"></div></div>
+      <div class="panel" id="nowPanel"><h2>Working on</h2><div class="now-title" id="nowTitle">—</div><div class="why" id="nowWhy"></div>
+        <div class="bar" id="bar" style="display:none"><i></i></div><div class="lines" id="nowLines"></div></div>
+      <div class="panel" style="display:flex;flex-direction:column;min-height:0"><h2>Completed</h2><div class="done-list" id="done"><span class="mut">Nothing yet.</span></div></div>
+    </div>
+    <div class="right">
+      <div class="panel" id="qrPanel"><h2>Technician</h2><div class="qr" id="qr"></div><div class="mut" style="margin-top:8px;font-size:13px">Scan with the Turbo Button app to connect.</div></div>
+      <div class="panel"><h2>Session</h2>
+        <div class="stat"><span>Fixes done</span><b id="nFix">0</b></div>
+        <div class="stat"><span>Space freed</span><b id="freed">0 B</b></div>
+        <div class="stat"><span>Time</span><b id="elapsed">0:00</b></div></div>
+      <div id="warnBox" class="warn" style="display:none"><b>■</b> PLEASE DON'T TURN OFF OR UNPLUG THIS PC <b>■</b></div>
+    </div>
+  </div>
+  <div class="log" id="log"></div>
+</div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const v = (location.hash.match(/v=([0-9a-f]+)/) || [])[1] || "";
+const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+let st = null, fails = 0, seenEnd = false;
+
+function paramText(p) {
+  const e = Object.entries(p || {}); if (!e.length) return "";
+  return " · " + e.sort((a, b) => a[0].localeCompare(b[0])).map(([k, x]) => typeof x === "boolean" ? `${k}: ${x ? "yes" : "no"}` : String(x)).join(", ");
+}
+function resultText(j) {
+  const r = j.result || {}, bits = [];
+  if (r.freedBytes > 0) bits.push("freed " + fmtBytes(r.freedBytes));
+  if (r.verdict) bits.push(r.verdict);
+  if (j.action === "windows_update" && r.mode === "install") bits.push(`${r.installed || 0} update(s) installed`);
+  if (j.action === "windows_update" && r.mode === "check") bits.push(`${r.found || 0} update(s) available`);
+  if (j.action === "app_updates" && r.mode === "install") bits.push(`${r.installed || 0} program(s) updated`);
+  if (r.removed === true) bits.push("removed");
+  return bits.join(" · ");
+}
+function render() {
+  if (!st) return;
+  $("pc").textContent = st.computer + "  ·  v" + st.version;
+  const jobs = st.jobs || [];
+  const running = jobs.find(j => j.status === "running");
+  const queued = jobs.filter(j => j.status === "queued").length;
+  const fixes = jobs.filter(j => j.action !== "scan" && j.status === "done");
+  $("status").textContent = !st.phone ? "WAITING FOR THE TECHNICIAN" : running ? (running.action === "scan" ? "CHECKING YOUR PC" : "SERVICING YOUR PC") : queued ? "WORKING" : jobs.length ? "READY" : "CONNECTED";
+  $("sub").textContent = !st.phone ? "The technician connects with their phone." : running || queued ? `${(running ? 1 : 0) + queued} step(s) in progress` : st.resumed ? "Resumed after restart." : "";
+  $("qrPanel").style.display = st.phone ? "none" : "";
+  if (!$("qr").innerHTML && st.qr) $("qr").innerHTML = st.qr;
+  if (running) {
+    $("nowTitle").textContent = running.title + paramText(running.params);
+    $("nowWhy").textContent = running.reason ? "Why: " + running.reason : "";
+    $("bar").style.display = "";
+    $("nowLines").textContent = (running.output || "").trim().split("\n").slice(-3).join("\n");
+  } else {
+    $("nowTitle").textContent = queued ? "Starting the next step…" : "—"; $("nowWhy").textContent = ""; $("bar").style.display = "none"; $("nowLines").textContent = "";
+  }
+  const finished = jobs.filter(j => j.status === "done" || j.status === "failed").slice(-12).reverse();
+  $("done").innerHTML = finished.length ? finished.map(j => `<div class="${j.status === "done" ? "ok" : "fail"}">${j.status === "done" ? "✔" : "✖"} ${esc(j.title)}${resultText(j) ? " — " + esc(resultText(j)) : ""}</div>`).join("") : '<span class="mut">Nothing yet.</span>';
+  $("nFix").textContent = fixes.filter(j => j.action !== "restore_point").length;
+  $("freed").textContent = fmtBytes(jobs.reduce((t, j) => t + (j.status === "done" && j.result?.freedBytes > 0 ? j.result.freedBytes : 0), 0));
+  const s = Math.max(0, Math.round((Date.now() - new Date(st.startedAt)) / 1000));
+  $("elapsed").textContent = Math.floor(s / 3600) ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  $("warnBox").style.display = running && running.action !== "scan" ? "" : "none";
+  const log = [];
+  for (const j of jobs.slice(-6)) {
+    const t = (j.started || j.queued || "").slice(11, 19);
+    log.push(`${t}  ${j.status === "done" ? "✔" : j.status === "failed" ? "✖" : j.status === "running" ? "▶" : "+"} ${j.title}${paramText(j.params)}`);
+  }
+  $("log").textContent = log.join("\n");
+}
+async function tick() {
+  try {
+    const r = await fetch("/screen/state?v=" + v, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    st = await r.json(); fails = 0; render();
+  } catch (e) {
+    if (++fails >= 3 && st && !seenEnd) {   // agent closed: session over
+      seenEnd = true; $("end").style.display = "flex";
+      setTimeout(() => window.close(), 4000);
+    }
+  }
+  setTimeout(tick, 1200);
+}
+setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); if (st) render(); }, 1000);
+(async function boot() {
+  const lines = ["TURBO BUTTON TECHNICIAN TERMINAL", "", "> POWER-ON SELF TEST ........ OK", "> DIAGNOSTIC SUBSYSTEMS ...... OK", "> SECURE LINK ................ READY", "", "TURBO ON"];
+  let out = "";
+  for (const l of lines) { for (const ch of l) { out += ch; $("boot").textContent = out + "█"; await sleep(12); } out += "\n"; await sleep(90); }
+  await sleep(400); $("boot").style.display = "none";
+})();
+tick();
+</script>
+</body>
+</html>

@@ -66,11 +66,13 @@ func main() {
 		if armed && !byPhone {
 			// Windows is closing us for the restart we started: keep the resume files.
 			fmt.Println("\n  > RESTARTING — Turbo Button will reopen after you log back in.")
+			closeScreen(a.workDir)
 			removeFirewallRule()
 			a.Cleanup()
 			return
 		}
 		fmt.Println("\n  > ENDING SESSION: removing firewall rule and temporary files...")
+		closeScreen(a.workDir)
 		removeFirewallRule()
 		cancelResume()
 		removeAgentCopy()
@@ -94,7 +96,20 @@ func main() {
 	url := fmt.Sprintf("http://%s:%d/#t=%s", ips[0], p, a.token)
 	stopAwake := keepAwake()
 	defer stopAwake()
+	a.controlURL = url
+	if q, err := EncodeQR(url); err == nil {
+		a.qrSVG = q.SVG()
+	}
 	printBanner(url, ips, p, vt)
+	if !hasArg("--no-screen") {
+		screenURL := fmt.Sprintf("http://127.0.0.1:%d/screen#v=%s", p, a.viewToken)
+		if mockMode() {
+			fmt.Println("  SCREEN: " + screenURL)
+		}
+		if err := openScreen(screenURL, a.workDir); err == nil {
+			fmt.Println(con.paint(cDim, "  > Customer screen opened. Closing it doesn't end the session — closing THIS window does."))
+		}
+	}
 	if a.resumed {
 		fmt.Println(con.paint(cPink, "  > SESSION RESUMED AFTER RESTART — the phone reconnects by itself. Rescan to check the results."))
 	} else if resumeErr != nil {

@@ -96,3 +96,5 @@ func machineID() string {
 	}
 	return "mock-machine-1"
 }
+func openScreen(url, workDir string) error { return fmt.Errorf("customer screen is Windows-only") }
+func closeScreen(string)                   {}

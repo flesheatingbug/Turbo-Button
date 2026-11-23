@@ -5,6 +5,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -413,4 +414,20 @@ func abs(a int) int {
 		return -a
 	}
 	return a
+}
+
+// SVG renders the code as a crisp, scalable image (black on white, 4-module quiet zone).
+func (q *QR) SVG() string {
+	var sb strings.Builder
+	n := q.Size + 8
+	fmt.Fprintf(&sb, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" shape-rendering="crispEdges"><rect width="%d" height="%d" fill="#fff"/><path fill="#000" d="`, n, n, n, n)
+	for y := 0; y < q.Size; y++ {
+		for x := 0; x < q.Size; x++ {
+			if q.Get(x, y) {
+				fmt.Fprintf(&sb, "M%d %dh1v1h-1z", x+4, y+4)
+			}
+		}
+	}
+	sb.WriteString(`"/></svg>`)
+	return sb.String()
 }
