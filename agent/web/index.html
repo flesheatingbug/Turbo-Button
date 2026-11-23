@@ -101,6 +101,7 @@
       <h2>Session</h2>
       <label class="row"><input type="checkbox" id="autoRP" style="width:auto" checked> Create a restore point automatically before the first change</label>
       <div class="mut" id="sessionInfo"></div>
+      <div class="mut" id="versionInfo" style="margin-top:4px"></div>
     </div>
   </section>
 
@@ -193,6 +194,7 @@
 
 <script>
 "use strict";
+const PAGE_VERSION = "0.2.1";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -836,6 +838,7 @@ async function startSession() {
 }
 
 (async function init() {
+  $("versionInfo").textContent = (NATIVE ? "Turbo Button app " : "Turbo Button control page ") + PAGE_VERSION;
   loadAI(); loadHistory();
   if (!S.token) {
     $("pcName").textContent = "not connected"; show("setup");

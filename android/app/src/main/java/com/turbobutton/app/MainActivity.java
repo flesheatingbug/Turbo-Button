@@ -80,6 +80,9 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
+        // The page ships inside the APK: never show a cached copy from an older install.
+        s.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        web.clearCache(true);
 
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
                 .setDomain(HOST)
