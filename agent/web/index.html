@@ -81,9 +81,13 @@
       <div class="mut">Your key is used from this phone only and is sent straight to the provider. It never goes to the customer's PC.</div>
       <label>Provider</label>
       <select id="aiProvider">
-        <option value="anthropic">Claude (Anthropic API)</option>
-        <option value="openai">OpenAI-compatible (ChatGPT, OpenRouter, LM Studio, Ollama…)</option>
+        <option value="anthropic">Claude (Anthropic API, paid per use)</option>
+        <option value="gemini">Google Gemini (free tier)</option>
+        <option value="openrouter">OpenRouter (free models)</option>
+        <option value="ollama">Ollama on my own computer/server (free, private)</option>
+        <option value="openai">Other OpenAI-compatible (ChatGPT, LM Studio…)</option>
       </select>
+      <div class="mut" id="aiHint" style="margin-top:6px"></div>
       <label>API base URL</label>
       <input id="aiBase" autocomplete="off" spellcheck="false">
       <label>Model</label>
@@ -112,8 +116,15 @@
   <!-- PLAN -->
   <section id="tab-plan">
     <div class="card">
-      <div class="row"><h2 class="grow" style="margin:0">AI plan</h2><button class="b" id="planBtn">Analyse scan</button></div>
-      <div id="planStatus" class="mut" style="margin-top:6px">Run a scan first, then let the AI propose fixes. Nothing runs until you tick it and press Run.</div>
+      <h2>Plan</h2>
+      <div class="row"><button class="b" id="planBtn">Analyse with AI</button><button class="b2" id="quickBtn">Quick plan (no AI)</button></div>
+      <div id="planStatus" class="mut" style="margin-top:6px">Run a scan first. Quick plan uses built-in rules: instant, offline and free. Nothing runs until you tick it and press Run.</div>
+      <details style="margin-top:10px"><summary>No API key? Use your Claude (or ChatGPT) app instead</summary>
+        <div class="mut" style="margin:6px 0">1. Tap Copy. 2. Paste into a new chat in your AI app and send. 3. Copy its whole reply and paste it below.</div>
+        <div class="row"><button class="b2" id="planCopy">Copy for AI app</button></div>
+        <textarea id="planPaste" placeholder="Paste the AI app's reply here" style="margin-top:8px"></textarea>
+        <div class="row" style="margin-top:6px"><button class="b2" id="planUsePaste">Use this reply</button></div>
+      </details>
     </div>
     <div id="planView"></div>
     <div class="card">
@@ -146,8 +157,14 @@
       <label>Notes to include</label><textarea id="rNotes"></textarea>
       <div class="row" style="margin-top:10px">
         <button class="b2" id="rescanBtn">Rescan (after state)</button>
-        <button class="b" id="reportBtn">Write report</button>
+        <button class="b" id="reportBtn">Write report with AI</button>
+        <button class="b2" id="reportBasicBtn">Basic report (no AI)</button>
       </div>
+      <details style="margin-top:10px"><summary>No API key? Use your Claude (or ChatGPT) app instead</summary>
+        <div class="row" style="margin-top:6px"><button class="b2" id="reportCopy">Copy for AI app</button></div>
+        <textarea id="reportPaste" placeholder="Paste the AI app's reply here" style="margin-top:8px"></textarea>
+        <div class="row" style="margin-top:6px"><button class="b2" id="reportUsePaste">Use this reply</button></div>
+      </details>
       <div class="mut" id="reportStatus" style="margin-top:6px"></div>
     </div>
     <div class="card" id="reportCard" style="display:none">
@@ -228,17 +245,25 @@ function show(tab) {
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.tab));
 
 // ---------- AI settings ----------
-const DEF = { anthropic: { base: "https://api.anthropic.com", model: "claude-sonnet-5-5" }, openai: { base: "https://api.openai.com/v1", model: "" } };
+const DEF = {
+  anthropic: { base: "https://api.anthropic.com", model: "claude-sonnet-5-5", keyPh: "sk-ant-…", hint: "Key from platform.claude.com → API keys. Billed per use, separate from a Claude subscription." },
+  gemini: { base: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.8-flash", keyPh: "AI…", hint: "Free key from aistudio.google.com/apikey (no card). Free-tier data terms are weaker — avoid for sensitive customers." },
+  openrouter: { base: "https://openrouter.ai/api/v1", model: "openrouter/free", keyPh: "sk-or-…", hint: "Free key from openrouter.ai. openrouter/free picks a free model at random (about 50 requests/day). Quality varies." },
+  ollama: { base: "http://192.168.1.10:11434", model: "qwen3.5:9b", keyPh: "not needed", hint: "Your Ollama server's address and port. Use a 9B+ model if your GPU allows. Away from home, reach it over Tailscale/WireGuard." },
+  openai: { base: "https://api.openai.com/v1", model: "", keyPh: "", hint: "Any OpenAI-compatible endpoint: base URL ending in /v1, plus model name and key." }
+};
+function providerUI(p) { const d = DEF[p] || DEF.openai; $("aiHint").textContent = d.hint; $("aiKey").placeholder = d.keyPh; $("aiModel").placeholder = d.model || "model name"; }
 function loadAI() {
   let s = null;
   try { s = JSON.parse((NATIVE ? window.TurboNative.getSettings() : (localStorage.getItem("turbo.ai") || sessionStorage.getItem("turbo.ai"))) || "null"); } catch {}
   s = s || { provider: "anthropic", base: DEF.anthropic.base, model: DEF.anthropic.model, key: "", remember: false };
   $("aiProvider").value = s.provider; $("aiBase").value = s.base; $("aiModel").value = s.model; $("aiKey").value = s.key; $("aiRemember").checked = !!s.remember;
-  $("aiModel").placeholder = s.provider === "openai" ? "model name, e.g. from your provider's list" : "";
+  if (!DEF[s.provider]) s.provider = "openai";
+  $("aiProvider").value = s.provider; providerUI(s.provider);
   return s;
 }
 function getAI() { return { provider: $("aiProvider").value, base: $("aiBase").value.trim().replace(/\/+$/, ""), model: $("aiModel").value.trim(), key: $("aiKey").value.trim(), remember: $("aiRemember").checked }; }
-$("aiProvider").onchange = () => { const d = DEF[$("aiProvider").value]; $("aiBase").value = d.base; $("aiModel").value = d.model; $("aiModel").placeholder = $("aiProvider").value === "openai" ? "model name, e.g. from your provider's list" : ""; };
+$("aiProvider").onchange = () => { const p = $("aiProvider").value, d = DEF[p]; $("aiBase").value = d.base; $("aiModel").value = d.model; if (p === "ollama") $("aiKey").value = ""; providerUI(p); };
 $("aiSave").onclick = () => {
   const s = getAI();
   if (NATIVE) { window.TurboNative.saveSettings(JSON.stringify(s)); toast("Saved (encrypted on this phone)"); return; }
@@ -248,11 +273,11 @@ $("aiSave").onclick = () => {
 };
 $("aiTest").onclick = async () => {
   $("aiTestOut").innerHTML = '<span class="spin"></span>';
-  try { const t = await askAI("Reply with the single word OK.", "Test", 20); $("aiTestOut").textContent = "Works: " + t.slice(0, 40); }
+  try { const t = await askAI("Reply with the single word OK.", "Test", 300); $("aiTestOut").textContent = "Works: " + t.slice(0, 40); }
   catch (e) { $("aiTestOut").textContent = "Failed: " + e.message; }
 };
 
-async function askAI(system, user, maxTokens = 8000) {
+async function askAI(system, user, maxTokens = 8000, schema = null) {
   const s = getAI();
   if (!s.model) throw new Error("Set a model in Setup");
   let r, j = {};
@@ -262,7 +287,7 @@ async function askAI(system, user, maxTokens = 8000) {
       throw new Error("Could not reach the AI provider (no internet on the phone or wrong URL" + (NATIVE ? "" : ", or a local server that doesn't allow browser access — for Ollama set OLLAMA_ORIGINS=*") + "). " + e.message);
     }
     try { j = JSON.parse(r.text || "{}"); } catch { j = {}; }
-    if (r.status >= 400) throw new Error(j?.error?.message || ("HTTP " + r.status));
+    if (r.status >= 400) throw new Error((typeof j.error === "string" ? j.error : j?.error?.message) || ("HTTP " + r.status));
   };
   if (s.provider === "anthropic") {
     if (!s.key) throw new Error("Add your Anthropic API key in Setup");
@@ -271,7 +296,18 @@ async function askAI(system, user, maxTokens = 8000) {
     await call(s.base + "/v1/messages", hd, { model: s.model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
     return (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
   }
+  if (s.provider === "ollama") {
+    // Native Ollama API: lets us force the exact JSON shape (format) and a big enough context for the scan.
+    const base = s.base.replace(/\/(v1|api)$/, "");
+    const body = { model: s.model, stream: false, messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      options: { num_ctx: 32768, temperature: 0.2, num_predict: maxTokens } };
+    if (schema) body.format = schema;
+    await call(base + "/api/chat", { "content-type": "application/json" }, body);
+    return j.message?.content || "";
+  }
+  if (!s.key && s.provider !== "openai") throw new Error("Add your API key in Setup");
   const hd = { "content-type": "application/json" }; if (s.key) hd.authorization = "Bearer " + s.key;
+  if (s.provider === "openrouter") hd["X-Title"] = "Turbo Button";
   await call(s.base + "/chat/completions", hd, { model: s.model, max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] });
   return j.choices?.[0]?.message?.content || "";
 }
@@ -380,22 +416,36 @@ Rules:
 Reply with JSON only, no prose, in this shape:
 {"summary":"2-4 sentences for the technician","health":"good|fair|poor","findings":[{"severity":"info|warn|critical","title":"","detail":""}],"proposals":[{"action":"id","params":{},"reason":"why","risk":"low|medium|high","askCustomer":false}],"manual":[{"title":"","detail":""}]}`;
 
+function planUser() { return "ACTION CATALOG:\n" + catalogText() + "\n\nSCAN:\n" + compactScan(S.scan); }
+function usePlan(plan, source) {
+  if (!plan || typeof plan !== "object") throw new Error("Reply didn't contain a plan");
+  plan.proposals = Array.isArray(plan.proposals) ? plan.proposals : [];
+  plan.proposals.forEach(p => { p._err = validate(p); p._sel = false; });
+  plan._source = source; S.plan = plan; $("planStatus").textContent = ""; renderPlan();
+}
 $("planBtn").onclick = async () => {
   if (!S.scan) { toast("Run a scan first"); show("scan"); return; }
-  $("planStatus").innerHTML = '<span class="spin"></span> The AI is reading the scan… (20–90 s)';
+  $("planStatus").innerHTML = '<span class="spin"></span> The AI is reading the scan… (20–90 s, longer on a local model)';
   $("planBtn").disabled = true;
-  try {
-    const txt = await askAI(PLAN_SYSTEM, "ACTION CATALOG:\n" + catalogText() + "\n\nSCAN:\n" + compactScan(S.scan));
-    S.plan = parseJSON(txt);
-    (S.plan.proposals || []).forEach(p => { p._err = validate(p); p._sel = false; });
-    $("planStatus").textContent = "";
-    renderPlan();
-  } catch (e) { $("planStatus").textContent = "AI error: " + e.message; }
+  try { usePlan(parseJSON(await askAI(PLAN_SYSTEM, planUser(), 8000, planSchema())), "AI (" + getAI().model + ")"); }
+  catch (e) { $("planStatus").textContent = "AI error: " + e.message + " — try Quick plan, or the copy/paste option below."; }
   $("planBtn").disabled = false;
+};
+$("quickBtn").onclick = () => {
+  if (!S.scan) { toast("Run a scan first"); show("scan"); return; }
+  try { usePlan(quickPlan(S.scan), "Quick plan (built-in rules)"); } catch (e) { $("planStatus").textContent = "Quick plan failed: " + e.message; }
+};
+$("planCopy").onclick = () => {
+  if (!S.scan) { toast("Run a scan first"); show("scan"); return; }
+  copyText(PLAN_SYSTEM + "\n\n" + planUser());
+};
+$("planUsePaste").onclick = () => {
+  try { usePlan(parseJSON($("planPaste").value), "AI app (pasted)"); $("planPaste").value = ""; toast("Plan loaded"); }
+  catch (e) { toast("Couldn't read that reply: " + e.message, 6000); }
 };
 function renderPlan() {
   const p = S.plan; if (!p) return;
-  let html = `<div class="card"><div class="row"><h2 class="grow" style="margin:0">Overview</h2><span class="badge ${p.health === "good" ? "low" : p.health === "poor" ? "high" : "medium"}">${esc(p.health)}</span></div><p>${esc(p.summary)}</p>`;
+  let html = `<div class="card"><div class="row"><h2 class="grow" style="margin:0">Overview <span class="mut" style="font-weight:400">· ${esc(p._source || "")}</span></h2><span class="badge ${p.health === "good" ? "low" : p.health === "poor" ? "high" : "medium"}">${esc(p.health)}</span></div><p>${esc(p.summary)}</p>`;
   html += (p.findings || []).map(f => `<div style="margin:6px 0"><span class="badge ${esc(f.severity)}">${esc(f.severity)}</span> <b>${esc(f.title)}</b><div class="mut">${esc(f.detail)}</div></div>`).join("") + `</div>`;
   const props = p.proposals || [];
   html += `<div class="card"><div class="row"><h2 class="grow" style="margin:0">Proposed actions (${props.length})</h2><button class="b2 sm" id="selLow">Select low risk</button><button class="b2 sm" id="selNone">None</button></div>`;
@@ -424,6 +474,140 @@ function renderPlan() {
     renderPlan(); toast(`${sel.length} queued`); show("jobs");
   };
   upd();
+}
+
+// ---------- clipboard ----------
+function copyText(t) {
+  if (NATIVE && window.TurboNative.copyText) { window.TurboNative.copyText(t); toast("Copied — now paste it into your AI app"); return; }
+  const done = () => toast("Copied — now paste it into your AI app");
+  if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(t).then(done, () => legacyCopy(t, done)); return; }
+  legacyCopy(t, done);
+}
+function legacyCopy(t, done) {
+  const ta = document.createElement("textarea"); ta.value = t; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;top:-1000px;opacity:0";
+  document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, t.length);
+  let ok = false; try { ok = document.execCommand("copy"); } catch {}
+  ta.remove(); ok ? done() : toast("Copy failed on this browser — use the Android app", 6000);
+}
+
+// ---------- JSON shapes (forced on Ollama) ----------
+function planSchema() {
+  const str = { type: "string" };
+  return { type: "object", required: ["summary", "health", "findings", "proposals", "manual"], properties: {
+    summary: str, health: { type: "string", enum: ["good", "fair", "poor"] },
+    findings: { type: "array", items: { type: "object", required: ["severity", "title", "detail"], properties: { severity: { type: "string", enum: ["info", "warn", "critical"] }, title: str, detail: str } } },
+    proposals: { type: "array", items: { type: "object", required: ["action", "params", "reason", "risk", "askCustomer"], properties: {
+      action: { type: "string", enum: (S.info?.catalog || []).map(a => a.id) }, params: { type: "object" }, reason: str,
+      risk: { type: "string", enum: ["low", "medium", "high"] }, askCustomer: { type: "boolean" } } } },
+    manual: { type: "array", items: { type: "object", required: ["title", "detail"], properties: { title: str, detail: str } } } } };
+}
+function reportSchema() {
+  const str = { type: "string" }, arr = { type: "array", items: { type: "string" } };
+  return { type: "object", required: ["headline", "customerSummary", "workDone", "issuesFound", "recommendations", "technicalNotes"],
+    properties: { headline: str, customerSummary: str, workDone: arr, issuesFound: arr, recommendations: arr, technicalNotes: str } };
+}
+
+// ---------- Quick plan: built-in rules, no AI ----------
+const JUNK_STARTUP = /(update|updater|upd\b|helper|launcher|tray|notif|agent|assistant|promo|offer|webadvisor|adobeaam|adobegc|acrotray|jusched|java.*update|ituneshelper|quicktime|realplayer|cyberlink|wildtangent|booking|ccleaner|driver.?(booster|easy|support)|pc.?(cleaner|optimizer|speed)|microsoftedgeautolaunch|edge.*autolaunch)/i;
+const KEEP_STARTUP = /(security|defender|antivirus|avast|avg|bitdefender|eset|kaspersky|malwarebytes|sophos|vpn|realtek|synaptics|elan|touchpad|audio|nahimic|waves|maxx|dolby|nvidia|amd|radeon|intel|igfx|onedrive|dropbox|google ?drive|icloud|backup|printer|epson|canon|brother|hp ?(smart|scan|print)|logi|razer|corsair|steelseries|keyboard|mouse|bluetooth|wacom|sound|display|monitor|battery|power)/i;
+const COMMON_APPS = /(spotify|discord|teams|skype|zoom|slack|steam|epic|origin|ea ?app|battle\.net|ubisoft|whatsapp|telegram|signal|messenger|outlook|opera|chrome|firefox|brave|vivaldi)/i;
+const JUNK_APPS = /(BingNews|BingFinance|BingSports|BingSearch|GetHelp|Getstarted|MicrosoftOfficeHub|WindowsFeedbackHub|MixedReality|3DBuilder|Microsoft3DViewer|OneConnect|Messaging|Wallet|CandyCrush|king\.com|549981C3F5F10|PowerAutomateDesktop|DevHome)/i;
+const JUNK_PROGRAMS = /(mcafee|norton|webadvisor|driver ?booster|driver ?easy|driver ?support|advanced ?systemcare|pc ?cleaner|pc ?optimizer|reimage|restoro|segurazo|outbyte|wise ?care|toolbar|ask\.com|conduit|mywebsearch|bytefence|pc ?accelerate|systweak|iobit)/i;
+
+function quickPlan(s) {
+  const P = [], F = [], M = [];
+  const prop = (action, params, reason, risk = "low", askCustomer = false) => P.push({ action, params, reason, risk, askCustomer });
+  const find = (severity, title, detail) => F.push({ severity, title, detail });
+  const sys = s.system || {}, c = s.cleanupPotentialGB || {}, ev = s.events || {}, sec = s.security || {}, pv = s.privacy || {};
+  const sysDrive = (s.volumes || []).find(v => v.drive === "C") || (s.volumes || [])[0];
+
+  // Disk space
+  if (sysDrive) {
+    if (sysDrive.freePct < 10) find("critical", `Very low space on ${sysDrive.drive}:`, `${sysDrive.freeGB} GB free (${sysDrive.freePct}%). Windows slows down and updates fail below ~10%.`);
+    else if (sysDrive.freePct < 20) find("warn", `Low space on ${sysDrive.drive}:`, `${sysDrive.freeGB} GB free (${sysDrive.freePct}%).`);
+  }
+  const labels = { user_temp: "user temp files", windows_temp: "Windows temp files", update_cache: "old Windows Update downloads", delivery_optimization: "update sharing cache",
+    crash_dumps: "crash dumps and error reports", browser_cache: "browser caches (logins and history are kept)", thumbnail_cache: "thumbnail cache" };
+  for (const [t, label] of Object.entries(labels)) if ((c[t] || 0) >= 0.2) prop("cleanup", { target: t }, `${c[t]} GB of ${label}.`);
+  if ((c.recycle_bin || 0) >= 0.5) prop("cleanup", { target: "recycle_bin" }, `${c.recycle_bin} GB in the Recycle Bin. Permanently deletes the customer's deleted files.`, "high", true);
+  if (sysDrive && sysDrive.freePct < 20) prop("component_cleanup", {}, "Low space: remove superseded Windows update components (5–20 min).");
+  if (c.windowsOldExists) M.push({ title: "Remove Windows.old", detail: "An old Windows installation is taking space. Remove it via Settings → System → Storage → Temporary files once the customer is happy with the current version." });
+  if ((c.hiberfilGB || 0) > 8 && !sys.isLaptop) M.push({ title: "Consider turning hibernation off", detail: `hiberfil.sys uses ${c.hiberfilGB} GB on this desktop. Use the hibernation action if space is tight (also disables Fast Startup).` });
+
+  // Startup
+  for (const x of (s.startup || []).filter(x => x.enabled)) {
+    const t = x.name + " " + x.command;
+    if (KEEP_STARTUP.test(t)) continue;
+    if (JUNK_STARTUP.test(t)) prop("startup_disable", { location: x.location, name: x.name }, `Not needed at startup: ${x.name}. The app still works when opened.`);
+    else if (COMMON_APPS.test(t)) prop("startup_disable", { location: x.location, name: x.name }, `${x.name} launches with Windows. Fine to disable if the customer opens it manually.`, "low", true);
+  }
+
+  // Store apps
+  for (const a of (s.apps || []).filter(a => a.likelyBloat)) {
+    const junk = JUNK_APPS.test(a.name);
+    prop("app_remove", { name: a.name }, junk ? "Preinstalled app few people use." : "Preinstalled/promoted app — remove only if the customer doesn't use it.", "medium", !junk);
+  }
+  // Desktop programs (manual)
+  const badProgs = (s.programs || []).filter(p => JUNK_PROGRAMS.test(p.name + " " + (p.publisher || "")));
+  if (badProgs.length) {
+    M.push({ title: "Uninstall junk / trial software", detail: badProgs.map(p => p.name).join(", ") + ". Check with the customer, then uninstall via Settings → Apps (use the vendor removal tool for McAfee/Norton)." });
+    find("warn", "Trialware or 'optimizer' software installed", badProgs.map(p => p.name).join(", "));
+  }
+
+  // Settings
+  if (s.power?.fastStartup === 1) prop("fast_startup", { enabled: false }, "Fast Startup stops 'Shut down' from fully resetting Windows and causes driver/update issues.");
+  if (pv.advertisingId !== 0) prop("privacy", { tweak: "advertising_id" }, "Stop apps using an advertising ID.");
+  if (pv.startSuggestions !== 0 || pv.silentAppInstalls !== 0) prop("privacy", { tweak: "start_suggestions" }, "Remove Start/Settings ads and stop Windows silently installing promoted apps.");
+  if (pv.tailoredExperiences !== 0) prop("privacy", { tweak: "tailored_experiences" }, "Stop personalised tips/ads based on diagnostic data.");
+  if (pv.bingInStart !== 0) prop("privacy", { tweak: "bing_search" }, "Start menu searches the PC only (faster, no web results).");
+  if (pv.lockscreenTips !== 0) prop("privacy", { tweak: "lockscreen_tips" }, "Remove lock-screen tips and ads.");
+  if (pv.telemetryPolicy == null) prop("privacy", { tweak: "telemetry_minimum" }, "Send only required diagnostic data.");
+
+  // Security
+  const others = (sec.antivirusProducts || []).filter(n => !/defender/i.test(n));
+  if (sec.realTime === false && !others.length) find("critical", "No active antivirus", "Microsoft Defender real-time protection is off and no other antivirus was found.");
+  if (others.length) find("info", "Third-party antivirus", others.join(", ") + (others.length > 1 ? " — more than one antivirus installed; keep only one." : ""));
+  if ((sec.recentThreats || []).length) find("critical", "Malware detections found", (sec.recentThreats || []).map(t => t.name || t.threatId).join(", "));
+  const sigAgeDays = sec.signaturesUpdated ? (Date.now() - new Date(sec.signaturesUpdated)) / 864e5 : 99;
+  if (sec.defenderEnabled !== false && !others.length) {
+    if (sigAgeDays > 2) prop("defender_update", {}, "Malware definitions are out of date.");
+    if ((sec.quickScanAgeDays ?? 99) > 7 || (sec.recentThreats || []).length) prop("defender_scan", { type: "quick" }, "No recent malware scan.");
+  }
+  if (sec.uacEnabled === 0) find("critical", "UAC is turned off", "User Account Control is disabled. Turn it back on in Control Panel → User Accounts.");
+
+  // Hardware / health
+  for (const d of s.physicalDisks || []) {
+    if (d.health && d.health !== "Healthy") find("critical", `Drive problem: ${d.name}`, `Health reports "${d.health}". Back up the customer's data now and plan a replacement.`);
+    if (d.wearPct >= 80) find("critical", `SSD nearly worn out: ${d.name}`, `${d.wearPct}% wear.`); else if (d.wearPct >= 50) find("warn", `SSD wear: ${d.name}`, `${d.wearPct}% wear.`);
+    if (d.tempC >= 70) find("warn", `Drive running hot: ${d.name}`, `${d.tempC}°C.`);
+    if (/HDD/i.test(d.mediaType) && sysDrive) M.push({ title: "Upgrade to an SSD", detail: `${d.name} is a spinning hard drive — the single biggest speed upgrade for this PC.` });
+  }
+  if ((ev.diskErrors30d || 0) > 0) { find("warn", "Disk errors in the event log", `${ev.diskErrors30d} in 30 days.`); prop("chkdsk_scan", { drive: "C" }, "Disk errors were logged; check the file system (read-only, no reboot)."); }
+  if (sysDrive) prop("optimize_drive", { drive: sysDrive.drive }, "Routine TRIM (SSD) or defrag (hard drive).");
+  if ((ev.bluescreens30d || 0) > 0) find("warn", "Blue screens", `${ev.bluescreens30d} in the last 30 days — check drivers and RAM.`);
+  if ((ev.unexpectedShutdowns30d || 0) > 0) find("warn", "Unexpected shutdowns", `${ev.unexpectedShutdowns30d} in 30 days — power cuts, overheating, or crashes.`);
+  if ((s.problemDevices || []).length) { find("warn", "Devices with driver problems", s.problemDevices.map(d => d.name).join(", ")); M.push({ title: "Fix device drivers", detail: "Install drivers from the manufacturer's support page for: " + s.problemDevices.map(d => d.name).join(", ") + "." }); }
+  const unhealthy = (ev.bluescreens30d || 0) > 0 || (ev.errorsLast7Days || 0) > 50 || (ev.appCrashes30d || []).length >= 3;
+  if (unhealthy) {
+    prop("dism_restore", {}, "Signs of system instability: repair the Windows image first (needs internet, 10–30 min).");
+    prop("sfc", {}, "Then check and repair Windows system files (5–20 min).");
+  }
+  if (s.battery?.healthPct != null) {
+    if (s.battery.healthPct < 60) find("critical", "Battery worn out", `${s.battery.healthPct}% of original capacity — recommend a replacement.`);
+    else if (s.battery.healthPct < 80) find("warn", "Battery wear", `${s.battery.healthPct}% of original capacity.`);
+  }
+  if ((sys.ramGB || 99) < 7.5) M.push({ title: "Add more RAM", detail: `${sys.ramGB} GB is tight for Windows 11 with a browser open; 16 GB recommended.` });
+  if (s.updates?.rebootPending) find("info", "Restart pending", "Windows is waiting for a restart to finish updates — restart before handing back.");
+  if ((sys.uptimeHours || 0) > 168) find("info", "Not restarted in over a week", `Up ${Math.round(sys.uptimeHours / 24)} days.`);
+
+  // Order: quick cleanups → startup/apps → settings → security → disk → long repairs last
+  const order = ["cleanup", "component_cleanup", "startup_disable", "app_remove", "fast_startup", "privacy", "defender_update", "defender_scan", "chkdsk_scan", "optimize_drive", "dism_restore", "sfc"];
+  P.sort((a, b) => order.indexOf(a.action) - order.indexOf(b.action));
+  const crit = F.filter(f => f.severity === "critical").length, warn = F.filter(f => f.severity === "warn").length;
+  const health = crit ? "poor" : warn >= 2 ? "fair" : "good";
+  const gb = Object.entries(c).filter(([k, v]) => typeof v === "number" && !["hiberfilGB", "pagefileGB", "recycle_bin"].includes(k)).reduce((t, [, v]) => t + v, 0);
+  const summary = `${sys.manufacturer || ""} ${sys.model || "PC"} on ${sys.os || "Windows"}. ${crit} critical and ${warn} warning finding(s). About ${gb.toFixed(1)} GB of junk files can be cleared; ${P.filter(p => p.action === "startup_disable").length} startup item(s) and ${P.filter(p => p.action === "app_remove").length} preinstalled app(s) flagged.`;
+  return { summary, health, findings: F, proposals: P, manual: M };
 }
 
 // manual builder
@@ -518,19 +702,28 @@ function keyMetrics(s) {
     security: s.security, battery: s.battery, problemDevices: s.problemDevices, updates: s.updates };
 }
 function workLog() { return S.jobs.filter(j => j.action !== "scan" && j.status !== "queued").map(j => ({ action: j.title, params: j.params, status: j.status, reason: j.reason, result: j.result, error: j.error, started: j.started, finished: j.finished })); }
+function reportUser() { return JSON.stringify({ before: keyMetrics(S.firstScan), after: S.firstScan?.scannedAt !== S.scan?.scannedAt ? keyMetrics(S.scan) : null, workLog: workLog(), technicianNotes: $("rNotes").value }); }
+function basicReport() {
+  const done = S.jobs.filter(j => j.action !== "scan" && j.status === "done");
+  const q = S.scan ? quickPlan(S.scan) : { findings: [], manual: [] };
+  const total = S.jobs.reduce((t, j) => t + (j.status === "done" && j.result?.freedBytes > 0 ? j.result.freedBytes : 0), 0);
+  return { headline: "Service report",
+    customerSummary: ($("rNotes").value ? $("rNotes").value + " " : "") + `Completed ${done.length} maintenance task(s)` + (total ? `, freeing ${fmtBytes(total)} of disk space` : "") + ".",
+    workDone: done.map(j => j.title + (Object.keys(j.params || {}).length ? " (" + Object.values(j.params).join(", ") + ")" : "") + (resultLine(j) ? " — " + resultLine(j) : "")),
+    issuesFound: q.findings.filter(f => f.severity !== "info").map(f => f.title + ": " + f.detail).concat(S.jobs.filter(j => j.status === "failed").map(j => "Could not complete: " + j.title + " (" + j.error + ")")),
+    recommendations: q.manual.map(m => m.title + " — " + m.detail), technicalNotes: "" };
+}
+function useReport(r) { if (!r || typeof r !== "object") throw new Error("Reply didn't contain a report"); S.report = r; renderReport(); }
 $("reportBtn").onclick = async () => {
   $("reportStatus").innerHTML = '<span class="spin"></span> Writing report…';
-  let r;
-  try {
-    const t = await askAI(REPORT_SYSTEM, JSON.stringify({ before: keyMetrics(S.firstScan), after: S.firstScan?.scannedAt !== S.scan?.scannedAt ? keyMetrics(S.scan) : null, workLog: workLog(), technicianNotes: $("rNotes").value }), 4000);
-    r = parseJSON(t); $("reportStatus").textContent = "";
-  } catch (e) {
-    $("reportStatus").textContent = "AI unavailable (" + e.message + ") — made a basic report from the work log instead.";
-    const done = S.jobs.filter(j => j.action !== "scan" && j.status === "done");
-    r = { headline: "Service report", customerSummary: $("rNotes").value, workDone: done.map(j => j.title + (resultLine(j) ? " — " + resultLine(j) : "")),
-      issuesFound: S.jobs.filter(j => j.status === "failed").map(j => j.title + ": " + j.error), recommendations: [], technicalNotes: "" };
-  }
-  S.report = r; renderReport();
+  try { useReport(parseJSON(await askAI(REPORT_SYSTEM, reportUser(), 4000, reportSchema()))); $("reportStatus").textContent = ""; }
+  catch (e) { $("reportStatus").textContent = "AI unavailable (" + e.message + ") — made a basic report instead."; useReport(basicReport()); }
+};
+$("reportBasicBtn").onclick = () => { $("reportStatus").textContent = ""; useReport(basicReport()); };
+$("reportCopy").onclick = () => copyText(REPORT_SYSTEM + "\n\n" + reportUser());
+$("reportUsePaste").onclick = () => {
+  try { useReport(parseJSON($("reportPaste").value)); $("reportPaste").value = ""; $("reportStatus").textContent = ""; }
+  catch (e) { toast("Couldn't read that reply: " + e.message, 6000); }
 };
 function reportHTML() {
   const r = S.report, sys = S.scan?.system || S.firstScan?.system || {};

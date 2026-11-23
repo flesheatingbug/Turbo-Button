@@ -1,6 +1,8 @@
 package com.turbobutton.app;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.net.Uri;
@@ -186,6 +188,18 @@ public class MainActivity extends Activity {
                     resolve(id, true, doRequest(new JSONObject(json)));
                 } catch (Exception e) {
                     resolve(id, false, e.getClass().getSimpleName() + ": " + e.getMessage());
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void copyText(final String text) {
+            main.post(() -> {
+                try {
+                    ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(ClipData.newPlainText("Turbo Button", text));
+                } catch (Exception e) {
+                    toast("Could not copy: " + e.getMessage());
                 }
             });
         }

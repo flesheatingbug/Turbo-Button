@@ -33,6 +33,19 @@ Keep `turbobutton.jks` safe and don't commit it (it's already in `.gitignore`). 
 - **Command line, with the Android SDK installed:** `cd android && ./gradlew assembleRelease`
 - **The EXE:** `cd agent && GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o TurboButton.exe .`
 
+## AI options (you don't need to pay)
+
+| Option | Cost | Privacy | Set up |
+|---|---|---|---|
+| **Quick plan** button | Free, offline | Nothing leaves the phone | Nothing — built-in rules |
+| **Copy for AI app** (Plan/Report tabs) | Uses the Claude/ChatGPT plan you already have | Goes to your AI app | Copy → paste into a new chat → paste the reply back |
+| **Ollama** on your own PC/server | Free | Stays on your hardware | Provider → Ollama, base `http://<server>:11434`, model e.g. `qwen3.5:9b`. Away from home, reach it via Tailscale/WireGuard. The app forces Ollama to reply in the exact JSON shape. |
+| **Google Gemini** free tier | Free (rate-limited) | Weaker free-tier data terms | Key from aistudio.google.com/apikey |
+| **OpenRouter** free models | Free (about 50 requests/day) | Free endpoints may log | Key from openrouter.ai, model `openrouter/free` |
+| **Claude API** | Paid per use | Anthropic API terms | Key from platform.claude.com |
+
+The report also has a **Basic report (no AI)** button. It builds the report from the work log plus the Quick-plan findings.
+
 ## Using the app
 
 1. Open **Setup** and choose a provider (Claude, OpenAI, OpenRouter, LM Studio or Ollama), then enter the model and key. They're saved encrypted on the phone and work for every customer.
