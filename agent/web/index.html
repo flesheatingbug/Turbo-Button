@@ -19,6 +19,11 @@
   nav button.on { color:var(--acc); }
   nav button b { display:block; font-size:18px; font-weight:600; }
   main { padding:12px; max-width:760px; margin:0 auto; }
+  #flow { position:sticky; top:49px; z-index:4; background:#101b27; border-bottom:1px solid var(--line); padding:8px 12px; }
+  #flow .steps { display:flex; gap:4px; margin-bottom:6px; }
+  #flow .steps span { flex:1; height:4px; border-radius:3px; background:#26323f; }
+  #flow .steps span.done { background:var(--ok); } #flow .steps span.now { background:var(--acc); }
+  #flow .row { flex-wrap:nowrap; } #flowText { font-size:14px; flex:1; } #flowText b { color:var(--acc); }
   section { display:none; } section.on { display:block; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin:0 0 12px; }
   .card h2 { font-size:15px; margin:0 0 8px; }
@@ -65,6 +70,8 @@
   <span class="pc" id="pcName">connecting…</span>
   <button class="b2 sm" id="endBtn">End</button>
 </header>
+<div id="flow"><div class="steps"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+  <div class="row"><div id="flowText">Starting…</div><button class="b sm" id="flowBtn" style="display:none"></button></div></div>
 
 <main>
   <!-- SETUP -->
@@ -114,6 +121,11 @@
       <div class="row"><h2 class="grow" style="margin:0">System scan</h2><button class="b" id="scanBtn">Scan</button></div>
       <div id="scanStatus" class="mut" style="margin-top:6px"></div>
     </div>
+    <div class="card">
+      <div class="row"><h2 class="grow" style="margin:0">Deep checks <span class="mut" style="font-weight:400">· optional, 10–30 min</span></h2><button class="b2" id="deepBtn">Run</button></div>
+      <div class="mut" style="margin-top:6px">Read-only checks that run in the background: pending Windows updates, outdated programs, system-file and Windows-image corruption, file-system errors, a malware quick scan and what's filling the disk. Worth it for slow, crashing or possibly infected PCs. Results feed into the plan.</div>
+      <div id="deepStatus" class="mut" style="margin-top:6px"></div>
+    </div>
     <div id="scanView"></div>
   </section>
 
@@ -124,7 +136,7 @@
       <div class="row"><button class="b" id="planBtn">Analyse with AI</button><button class="b2" id="quickBtn">Quick plan (no AI)</button></div>
       <div id="planStatus" class="mut" style="margin-top:6px">Run a scan first. Quick plan uses built-in rules: instant, offline and free. Nothing runs until you tick it and press Run.</div>
       <details style="margin-top:10px"><summary>Use your Claude/ChatGPT app instead (no API key)</summary>
-        <div class="mut" style="margin:6px 0">1. Tap Copy. 2. Paste into a new chat in your AI app and send. 3. Copy its whole reply and paste it below.</div>
+        <div class="mut" style="margin:6px 0">1. Tap Copy. 2. Paste into a <b>new</b> chat in your AI app and send. 3. Tap the copy button on its code block (or copy the whole reply) and paste it below.</div>
         <div class="row"><button class="b2" id="planCopy">Copy for AI app</button></div>
         <textarea id="planPaste" placeholder="Paste the AI app's reply here" style="margin-top:8px"></textarea>
         <div class="row" style="margin-top:6px"><button class="b2" id="planUsePaste">Use this reply</button></div>
@@ -171,6 +183,7 @@
       </details>
       <div class="mut" id="reportStatus" style="margin-top:6px"></div>
     </div>
+    <div class="card" id="baCard" style="display:none"><h2>Before → After</h2><div class="kv" id="baView"></div></div>
     <div class="card" id="reportCard" style="display:none">
       <div class="row" style="margin-bottom:10px"><button class="b" id="dlBtn">Download</button><button class="b2" id="shareBtn">Share</button></div>
       <div id="reportView"></div>
@@ -187,17 +200,17 @@
 </main>
 
 <nav>
-  <button data-tab="setup"><b>⚙</b>Setup</button>
+  <button data-tab="setup"><b>⚙</b>Connect</button>
   <button data-tab="scan"><b>⌕</b>Scan</button>
   <button data-tab="plan"><b>✦</b>Plan</button>
-  <button data-tab="jobs"><b>☰</b>Work</button>
+  <button data-tab="jobs"><b>☰</b>Fix</button>
   <button data-tab="report"><b>▤</b>Report</button>
 </nav>
 <div class="toast" id="toast"></div>
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.3.0";
+const PAGE_VERSION = "0.4.0";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -318,11 +331,41 @@ async function askAI(system, user, maxTokens = 8000, schema = null) {
   await call(s.base + "/chat/completions", hd, { model: s.model, max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] });
   return j.choices?.[0]?.message?.content || "";
 }
+// Tolerant JSON reader for replies pasted from chat apps (ChatGPT, Claude, Gemini…):
+// finds the JSON among other text, fixes smart quotes/trailing commas/comments, and rescues cut-off replies.
+function cleanJSONText(t) {
+  return t.replace(/[“”„‟″]/g, '"').replace(/[‘’‚‛′]/g, "'").replace(/ /g, " ")
+    .replace(/^\s*\/\/.*$/gm, "").replace(/,\s*([}\]])/g, "$1");
+}
+function repairTruncated(t) {
+  // Walk the text; remember the last point where an element inside an array/object closed cleanly, then close what's open.
+  const stack = []; let inStr = false, esc = false, lastGood = -1, lastStack = null;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === "{" || c === "[") stack.push(c);
+    else if (c === "}" || c === "]") { stack.pop(); if (stack.length) { lastGood = i; lastStack = stack.slice(); } else return t.slice(0, i + 1); }
+  }
+  if (lastGood < 0) return null;
+  return t.slice(0, lastGood + 1) + lastStack.reverse().map(c => (c === "{" ? "}" : "]")).join("");
+}
 function parseJSON(t) {
-  t = String(t).replace(/^\s*```(?:json)?/i, "").replace(/```\s*$/, "");
-  const a = t.indexOf("{"), b = t.lastIndexOf("}");
-  if (a < 0 || b < a) throw new Error("AI reply was not JSON");
-  return JSON.parse(t.slice(a, b + 1));
+  t = String(t || "");
+  const blocks = [...t.matchAll(/```(?:json|JSON)?\s*([\s\S]*?)(```|$)/g)].map(m => m[1]).filter(x => x.includes("{"));
+  const candidates = blocks.length ? blocks : [t];
+  candidates.sort((x, y) => y.length - x.length);
+  let lastErr = "no JSON found";
+  for (let c of candidates) {
+    const a = c.indexOf("{"); if (a < 0) continue;
+    c = cleanJSONText(c.slice(a));
+    const b = c.lastIndexOf("}");
+    for (const attempt of [b > 0 ? c.slice(0, b + 1) : null, repairTruncated(c)]) {
+      if (!attempt) continue;
+      try { const o = JSON.parse(attempt); if (attempt !== c.slice(0, b + 1)) o._repaired = true; return o; } catch (e) { lastErr = e.message; }
+    }
+  }
+  throw new Error("couldn't find a valid JSON answer in the reply (" + lastErr + "). Make sure you copied the whole reply; if it was cut off, ask the AI app to \"reply again, shorter, JSON only\".");
 }
 
 // ---------- catalog & validation ----------
@@ -463,8 +506,20 @@ function diagCards(s) {
 }
 
 // ---------- AI plan ----------
-function compactScan(s) {
+function compactScan(s, tight = false) {
   const c = JSON.parse(JSON.stringify(s || {}));
+  if (tight) {
+    delete c.errors;
+    if (c.programs) c.programs = c.programs.map(p => p.name + (p.uninstall && p.uninstall !== "quiet" ? " [" + p.uninstall + "]" : ""));
+    if (c.apps) c.apps = c.apps.filter(a => a.likelyBloat).map(a => a.name);
+    if (c.services) c.services = c.services.filter(x => x.thirdParty || x.state === "Running").map(x => `${x.name} (${x.startMode}, ${x.state})`);
+    if (c.scheduledTasks) c.scheduledTasks = c.scheduledTasks.map(t => t.path + t.name);
+    if (c.startup) c.startup = c.startup.map(x => ({ location: x.location, name: x.name, enabled: x.enabled, command: (x.command || "").slice(0, 80) }));
+    if (c.events?.topSources) c.events.topSources = c.events.topSources.slice(0, 8).map(e => ({ source: e.source, count: e.count, sample: (e.sample || "").slice(0, 100) }));
+    if (c.browsersAndNetwork?.extensions) c.browsersAndNetwork.extensions = c.browsersAndNetwork.extensions.map(e => `${e.name} (${e.browser})`);
+    if (c.gpu) c.gpu = c.gpu.map(g => `${g.name} ${g.driverDate || ""}`);
+    return JSON.stringify(c);
+  }
   if (c.programs) c.programs = c.programs.map(p => `${p.name} | ${p.publisher || ""} | ${p.version || ""}${p.sizeMB ? " | " + p.sizeMB + "MB" : ""}${p.installed ? " | " + p.installed : ""}`);
   if (c.apps) c.apps = c.apps.map(a => a.name + (a.likelyBloat ? " [bloat-hint]" : "") + (a.provisioned ? " [provisioned]" : ""));
   let t = JSON.stringify(c);
@@ -487,17 +542,21 @@ Rules:
 - Adware: hijacked browser search/homepage, forced browser policies, odd proxies, manual DNS to unknown servers and hosts-file redirects are red flags. NEVER propose remove_browser_policies, reset_dns or reset_proxy on a domain-joined (business) PC; elsewhere set askCustomer true.
 - Blue screens: interpret bugcheck codes (driver vs RAM vs disk vs GPU vs hardware) in findings; propose schedule_memory_test for RAM-type codes and schedule_chkdsk for disk-type codes.
 - Slow boot: name the worst offenders from bootPerformance.slowdowns.
+- If DEEP CHECK RESULTS are given, use them: corruption from sfc_verify/dism_check → dism_restore then sfc; chkdsk problems → schedule_chkdsk; Defender detections → critical finding (and defender_offline_scan if serious); available updates → windows_update / app_updates install; disk_usage → say what fills the disk. Don't re-propose the read-only checks themselves.
 - Any action that needs a restart (windows_update install, network_reset, schedule_*) means proposing restart_pc {minutes:"1"} as the VERY LAST proposal with askCustomer true. Never propose defender_offline_scan unless malware is strongly suspected (it restarts immediately).
 - Things the agent cannot do (uninstalling desktop programs, driver updates, BIOS, hardware) go in "manual".
 Reply with JSON only, no prose, in this shape:
 {"summary":"2-4 sentences for the technician","health":"good|fair|poor","findings":[{"severity":"info|warn|critical","title":"","detail":""}],"proposals":[{"action":"id","params":{},"reason":"why","risk":"low|medium|high","askCustomer":false}],"manual":[{"title":"","detail":""}]}`;
 
-function planUser() { return "ACTION CATALOG:\n" + catalogText() + "\n\nSCAN:\n" + compactScan(S.scan); }
+function planUser() {
+  const d = deepResults();
+  return "ACTION CATALOG:\n" + catalogText() + "\n\nSCAN:\n" + compactScan(S.scan) + (Object.keys(d).length ? "\n\nDEEP CHECK RESULTS (read-only checks already run):\n" + JSON.stringify(d) : "");
+}
 function usePlan(plan, source) {
   if (!plan || typeof plan !== "object") throw new Error("Reply didn't contain a plan");
   plan.proposals = Array.isArray(plan.proposals) ? plan.proposals : [];
   plan.proposals.forEach(p => { p._err = validate(p); p._sel = false; });
-  plan._source = source; S.plan = plan; $("planStatus").textContent = ""; renderPlan();
+  plan._source = source; plan._at = Date.now(); S.plan = plan; $("planStatus").textContent = ""; renderPlan(); updateFlow();
 }
 function openPaste(which) {
   const d = $(which + "Paste").closest("details"); d.open = true;
@@ -516,12 +575,23 @@ $("quickBtn").onclick = () => {
   if (!S.scan) { toast("Run a scan first"); show("scan"); return; }
   try { usePlan(quickPlan(S.scan), "Quick plan (built-in rules)"); } catch (e) { $("planStatus").textContent = "Quick plan failed: " + e.message; }
 };
+function chatPrompt(system, data, shape) {
+  return "=== TURBO BUTTON REQUEST - READ ALL OF THIS FIRST ===\n" +
+    "Reply with ONE JSON object inside a single ```json code block and nothing else: no introduction, no explanation, no questions, no follow-up offers. " +
+    "Keep every text field short (under 20 words) and give at most 25 proposals so the reply is not cut off.\n\n" +
+    system + "\n\n=== DATA ===\n" + data + "\n=== END OF DATA ===\n\n" +
+    "REMINDER: answer with only the JSON object (" + shape + ") in one ```json code block. Nothing before or after it.";
+}
+function planUserChat() {
+  const d = deepResults();
+  return "ACTION CATALOG:\n" + catalogText() + "\n\nSCAN:\n" + compactScan(S.scan, true) + (Object.keys(d).length ? "\n\nDEEP CHECK RESULTS:\n" + JSON.stringify(d) : "");
+}
 $("planCopy").onclick = () => {
   if (!S.scan) { toast("Run a scan first"); show("scan"); return; }
-  copyText(PLAN_SYSTEM + "\n\n" + planUser());
+  copyText(chatPrompt(PLAN_SYSTEM, planUserChat(), "summary, health, findings, proposals, manual"));
 };
 $("planUsePaste").onclick = () => {
-  try { usePlan(parseJSON($("planPaste").value), "AI app (pasted)"); $("planPaste").value = ""; toast("Plan loaded"); }
+  try { const pl = parseJSON($("planPaste").value); usePlan(pl, "AI app (pasted)"); $("planPaste").value = ""; toast(pl._repaired ? "Plan loaded — the reply was cut off, so some suggestions may be missing" : "Plan loaded", 5000); }
   catch (e) { toast("Couldn't read that reply: " + e.message, 6000); }
 };
 function renderPlan() {
@@ -597,7 +667,11 @@ const JUNK_PROGRAMS = /(mcafee|norton|webadvisor|driver ?booster|driver ?easy|dr
 
 function quickPlan(s) {
   const P = [], F = [], M = [];
-  const prop = (action, params, reason, risk = "low", askCustomer = false) => P.push({ action, params, reason, risk, askCustomer });
+  const prop = (action, params, reason, risk = "low", askCustomer = false) => {
+    if (P.some(p => p.action === action && JSON.stringify(p.params) === JSON.stringify(params))) return;
+    P.push({ action, params, reason, risk, askCustomer });
+  };
+  const deep = deepResults(), dr = (a) => deep[a]?.status === "done" ? (deep[a].result || {}) : null;
   const find = (severity, title, detail) => F.push({ severity, title, detail });
   const sys = s.system || {}, c = s.cleanupPotentialGB || {}, ev = s.events || {}, sec = s.security || {}, pv = s.privacy || {};
   const sysDrive = (s.volumes || []).find(v => v.drive === "C") || (s.volumes || [])[0];
@@ -723,15 +797,42 @@ function quickPlan(s) {
   if (pf.committedPct > 85) find("warn", "Memory pressure", `${pf.committedPct}% of memory committed with ${pf.availableMB} MB free — too many programs for the RAM.`);
   if (pf.cpuNowPct > 60) find("warn", "Busy CPU at idle", `${pf.cpuNowPct}% — ` + (pf.topCpu || []).join(", "));
   if ((pf.thermalZonesC || []).some(t => t >= 85)) find("warn", "Running hot", (pf.thermalZonesC || []).join(" / ") + " °C — clean fans and vents.");
-  if (sysDrive && sysDrive.freePct < 20) prop("disk_usage", {}, "Find what's filling the drive (read-only).");
+  if (sysDrive && sysDrive.freePct < 20 && !dr("disk_usage")) prop("disk_usage", {}, "Find what's filling the drive (read-only).");
+
+  // Deep-check results
+  const wu = dr("windows_update");
+  if (wu && wu.found > 0) {
+    const drv = (wu.updates || []).some(u => u.driver);
+    find("info", `${wu.found} Windows update(s) waiting`, (wu.updates || []).slice(0, 4).map(u => u.title).join("; "));
+    P.splice(0, P.length, ...P.filter(p => p.action !== "windows_update"));
+    prop("windows_update", { mode: "install", drivers: drv || (s.problemDevices || []).length > 0 }, `${wu.found} update(s) found by the deep check.`);
+  } else if (wu && wu.found === 0) P.splice(0, P.length, ...P.filter(p => p.action !== "windows_update" && p.action !== "reset_windows_update"));
+  const au = dr("app_updates");
+  if (au && au.available === 0) P.splice(0, P.length, ...P.filter(p => p.action !== "app_updates"));
+  else if (au && au.available > 0) find("info", `${au.available} program update(s) available`, "Updated silently with winget.");
+  const sv = dr("sfc_verify"), dc = dr("dism_check");
+  if ((sv && sv.corrupt) || (dc && dc.corrupt)) {
+    find("warn", "Windows system files are damaged", [sv && sv.corrupt ? "SFC found integrity violations" : "", dc && dc.corrupt ? "DISM: " + dc.verdict : ""].filter(Boolean).join("; "));
+    prop("dism_restore", {}, "Deep check found corruption: repair the Windows image first.");
+    prop("sfc", {}, "Then repair the system files.");
+  } else if (sv && dc && !sv.corrupt && !dc.corrupt && !unhealthy) P.splice(0, P.length, ...P.filter(p => p.action !== "dism_restore" && p.action !== "sfc"));
+  const ck = dr("chkdsk_scan");
+  if (ck && ck.problemsFound) { find("warn", "File-system errors on C:", ck.output || "chkdsk found problems"); prop("schedule_chkdsk", { drive: "C" }, "The online disk check found errors: repair them at the next restart.", "medium", true); }
+  const ds = dr("defender_scan");
+  if (ds && (ds.detections || []).length) {
+    find("critical", "Malware found by the quick scan", ds.detections.map(d => d.name || d.resources).join("; "));
+    prop("defender_offline_scan", {}, "Malware was detected: an offline scan removes what a normal scan can't. Restarts immediately.", "high", true);
+  }
+  const du = dr("disk_usage");
+  if (du && (du.folders || []).length) find("info", "Biggest folders", du.folders.slice(0, 5).map(f => `${f.path} ${f.gb} GB`).join("; "));
 
   // Anything that needs a restart → restart last
-  const needsRestart = P.some(p => ["schedule_memory_test", "schedule_chkdsk", "windows_update"].includes(p.action)) || s.updates?.rebootPending;
+  const needsRestart = P.some(p => ["schedule_memory_test", "schedule_chkdsk", "windows_update", "network_reset"].includes(p.action)) || s.updates?.rebootPending;
   if (needsRestart) prop("restart_pc", { minutes: "1" }, "Finish updates/scheduled checks. Do this LAST — write the report first; the session ends when the PC restarts.", "medium", true);
 
   // Order: quick cleanups → startup/apps → settings → security → disk → long repairs → restart last
   const order = ["disk_usage", "cleanup", "component_cleanup", "program_uninstall", "startup_disable", "app_remove", "remove_browser_policies", "reset_proxy", "reset_dns", "reset_hosts",
-    "fast_startup", "privacy", "defender_update", "defender_scan", "chkdsk_scan", "optimize_drive", "reset_windows_update", "dism_restore", "sfc", "app_updates", "windows_update", "schedule_memory_test", "schedule_chkdsk", "restart_pc"];
+    "fast_startup", "privacy", "defender_update", "defender_scan", "chkdsk_scan", "optimize_drive", "reset_windows_update", "dism_restore", "sfc", "app_updates", "windows_update", "schedule_memory_test", "schedule_chkdsk", "defender_offline_scan", "restart_pc"];
   P.sort((a, b) => order.indexOf(a.action) - order.indexOf(b.action));
   const crit = F.filter(f => f.severity === "critical").length, warn = F.filter(f => f.severity === "warn").length;
   const health = crit ? "poor" : warn >= 2 ? "fair" : "good";
@@ -783,12 +884,13 @@ async function poll() {
     S.jobs = jobs; renderJobs();
     if (S.info) $("pcName").textContent = S.info.computer;
     if (scanDone !== prevScanDone) {
-      const sc = await api("/api/scan"); S.scan = sc.latest; S.firstScan = sc.first; renderScan();
+      const sc = await api("/api/scan"); S.scan = sc.latest; S.firstScan = sc.first; renderScan(); renderBA();
       $("scanStatus").textContent = "Last scan: " + (S.scan?.scannedAt || "");
       if (S.scan && scanDone === 1) toast("Scan finished — open Plan to analyse it");
     }
     const sj = jobs.filter(j => j.action === "scan" && (j.status === "running" || j.status === "queued")).pop();
     if (sj) $("scanStatus").innerHTML = '<span class="spin"></span> ' + (sj.status === "queued" ? "Scan queued behind other jobs…" : esc((sj.output || "").trim().split("\n").pop() || "Scanning…"));
+    updateFlow();
     const busy = jobs.some(j => j.status === "running" || j.status === "queued");
     pollTimer = setTimeout(poll, busy ? 1500 : 6000);
   } catch (e) {
@@ -830,6 +932,87 @@ function renderJobs() {
   $("jobsView").querySelectorAll("[data-cancel]").forEach(b => b.onclick = async () => { try { await api(`/api/jobs/${b.dataset.cancel}/cancel`, { method: "POST" }); pollSoon(); } catch (e) { toast(e.message); } });
 }
 
+// ---------- guided flow ----------
+const DEEP = [["windows_update", { mode: "check", drivers: true }], ["app_updates", { mode: "list" }], ["disk_usage", {}], ["dism_check", {}], ["sfc_verify", {}], ["chkdsk_scan", { drive: "C" }], ["defender_scan", { type: "quick" }]];
+const isDeepJob = (j) => DEEP.some(([a, p]) => a === j.action && Object.entries(p).every(([k, v]) => String(j.params?.[k]) === String(v)));
+function deepResults() {
+  const out = {};
+  for (const j of S.jobs) if (isDeepJob(j) && (j.status === "done" || j.status === "failed")) out[j.action] = { status: j.status, result: j.result, error: j.error };
+  return out;
+}
+$("deepBtn").onclick = async () => {
+  if (!S.scan) { toast("Run the normal scan first"); return; }
+  const sec = S.scan.security || {}, otherAV = (sec.antivirusProducts || []).some(n => !/defender/i.test(n));
+  let n = 0;
+  for (const [a, p] of DEEP) {
+    if (a === "defender_scan" && (otherAV || sec.defenderEnabled === false)) continue;
+    if (a === "app_updates" && !S.scan.updates?.wingetAvailable) continue;
+    if (S.jobs.some(j => isDeepJob(j) && j.action === a && (j.status === "queued" || j.status === "running"))) continue;
+    try { await queue(a, p, "Deep check (read-only)"); n++; } catch (e) { toast(e.message); }
+  }
+  $("deepStatus").textContent = n ? `${n} check(s) queued — they run one after another. Watch them on the Fix tab.` : "Deep checks are already running.";
+};
+function deepStatusText() {
+  const dj = S.jobs.filter(isDeepJob); if (!dj.length) return "";
+  const left = dj.filter(j => j.status === "queued" || j.status === "running").length;
+  if (left) return `Deep checks: ${dj.length - left}/${dj.length} done…`;
+  const doneAt = Math.max(...dj.map(j => +new Date(j.finished || 0)));
+  if (S.plan && (S.plan._at || 0) > doneAt) return "";
+  return `Deep checks finished (${dj.filter(j => j.status === "done").length}/${dj.length} ok)` + (S.plan ? " — redo the plan to use them." : ".");
+}
+function aiReady() { const a = getAI(); return a.provider === "manual" || a.provider === "ollama" || a.provider === "openai" || !!a.key; }
+let flowAction = null;
+function updateFlow() {
+  const connected = !!S.info && !S.ended;
+  const scans = S.jobs.filter(j => j.action === "scan");
+  const scanBusy = scans.some(j => j.status === "queued" || j.status === "running");
+  const changes = S.jobs.filter(j => j.action !== "scan" && j.action !== "restore_point" && !isDeepJob(j) && j.status !== "cancelled");
+  const busy = changes.filter(j => j.status === "queued" || j.status === "running");
+  const lastChange = Math.max(0, ...changes.filter(j => j.finished).map(j => +new Date(j.finished)));
+  const lastScan = Math.max(0, ...scans.filter(j => j.status === "done" && j.finished).map(j => +new Date(j.finished)));
+  let step, text, btn = null, act = null;
+  if (S.ended) { step = 6; text = "Session ended."; if (NATIVE) { btn = "Next PC"; act = () => location.reload(); } }
+  else if (!connected) { step = 0; text = NATIVE ? "<b>① Connect:</b> run TurboButton.exe on the PC and scan its QR code." : "<b>① Connect:</b> open the link from the PC's QR code."; if (NATIVE) { btn = "Scan QR"; act = () => $("qrBtn").click(); } }
+  else if (!S.scan) { step = 1; text = scanBusy ? '<span class="spin"></span> <b>② Scanning the PC…</b> about a minute.' : "<b>② Scan</b> the PC (read-only)."; if (!scanBusy) { btn = "Scan"; act = () => { show("scan"); startScan(); }; } }
+  else if (!S.plan) { step = 2; text = "<b>③ Plan:</b> Quick plan (no setup) or AI" + (aiReady() ? "." : " — set up AI in Connect, or use Quick plan."); btn = "Plan"; act = () => show("plan"); }
+  else if (!changes.length) { step = 3; text = "<b>④ Fix:</b> tick the fixes you approve, then press Run."; btn = "Plan"; act = () => show("plan"); }
+  else if (busy.length) { step = 3; text = `<span class="spin"></span> <b>④ Fixing…</b> ${busy.length} left.`; btn = "Watch"; act = () => show("jobs"); }
+  else if (lastScan < lastChange) { step = 4; text = scanBusy ? '<span class="spin"></span> <b>⑤ Rescanning…</b>' : "<b>⑤ Check:</b> rescan to confirm the results."; if (!scanBusy) { btn = "Rescan"; act = () => { startScan(); }; } }
+  else if (!S.report) { step = 5; text = "<b>⑥ Report:</b> write the report for the customer."; btn = "Report"; act = () => show("report"); }
+  else { step = 6; text = "✓ Done — share the report, then tap End."; btn = "Report"; act = () => show("report"); }
+  const dt = deepStatusText(); if (dt && !S.ended) text += ` <span class="mut">· ${esc(dt)}</span>`;
+  $("flowText").innerHTML = text;
+  document.querySelectorAll("#flow .steps span").forEach((el, i) => { el.className = i < step ? "done" : i === step ? "now" : ""; });
+  $("flowBtn").style.display = btn ? "" : "none"; $("flowBtn").textContent = btn || ""; flowAction = act;
+  if (dt) $("deepStatus").textContent = dt;
+}
+$("flowBtn").onclick = () => flowAction && flowAction();
+
+// ---------- before / after ----------
+function baRows() {
+  const a = S.firstScan, b = S.scan;
+  if (!a || !b || a.scannedAt === b.scannedAt) return [];
+  const vol = (s) => (s.volumes || []).find(v => v.drive === "C") || (s.volumes || [])[0] || {};
+  const junk = (s) => Object.entries(s.cleanupPotentialGB || {}).filter(([k, v]) => typeof v === "number" && !["hiberfilGB", "pagefileGB"].includes(k)).reduce((t, [, v]) => t + v, 0);
+  const rows = [
+    ["Free space on " + (vol(b).drive || "C") + ":", vol(a).freeGB + " GB", vol(b).freeGB + " GB"],
+    ["Junk files", junk(a).toFixed(1) + " GB", junk(b).toFixed(1) + " GB"],
+    ["Startup apps", (a.startup || []).filter(x => x.enabled).length, (b.startup || []).filter(x => x.enabled).length],
+    ["Bloat apps", (a.apps || []).filter(x => x.likelyBloat).length, (b.apps || []).filter(x => x.likelyBloat).length],
+    ["Programs installed", (a.programs || []).length, (b.programs || []).length],
+    ["Browser/network warnings", (() => { const w = adwareSigns(a); return w.badSearch.length + w.forced.length + (w.proxy ? 1 : 0) + w.dns.length + (w.hosts.length ? 1 : 0); })(),
+      (() => { const w = adwareSigns(b); return w.badSearch.length + w.forced.length + (w.proxy ? 1 : 0) + w.dns.length + (w.hosts.length ? 1 : 0); })()],
+  ];
+  const ba = a.bootPerformance?.recentBoots?.[0], bb = b.bootPerformance?.recentBoots?.[0];
+  if (ba && bb && ba.when !== bb.when) rows.push(["Boot time", ba.bootSec + " s", bb.bootSec + " s"]);
+  return rows.filter(r => String(r[1]) !== String(r[2]));
+}
+function renderBA() {
+  const rows = baRows();
+  $("baCard").style.display = rows.length ? "" : "none";
+  $("baView").innerHTML = rows.map(r => `<div>${esc(r[0])}</div><div>${esc(r[1])} → <b>${esc(r[2])}</b></div>`).join("");
+}
+
 // ---------- report ----------
 const REPORT_SYSTEM = `You write service reports for a computer repair technician. Use the before/after scan data and the work log. Be accurate: only claim work that appears in the log with status done; mention failures honestly.
 Reply with JSON only: {"headline":"one line","customerSummary":"plain-English paragraph for a non-technical customer","workDone":["short bullet per completed action, with results like space freed"],"issuesFound":["problems found, incl. ones not fixed"],"recommendations":["next steps for the customer, e.g. hardware, backups, habits"],"technicalNotes":"short paragraph for the technician's records"}`;
@@ -842,7 +1025,7 @@ function keyMetrics(s) {
     blueScreens: (s.crashes?.bugchecks90d || []).map(b => b.code + " " + bugInfo(b.code)), adwareSigns: adwareSigns(s), memoryTest: s.memoryTest };
 }
 function workLog() { return S.jobs.filter(j => j.action !== "scan" && j.status !== "queued").map(j => ({ action: j.title, params: j.params, status: j.status, reason: j.reason, result: j.result, error: j.error, started: j.started, finished: j.finished })); }
-function reportUser() { return JSON.stringify({ before: keyMetrics(S.firstScan), after: S.firstScan?.scannedAt !== S.scan?.scannedAt ? keyMetrics(S.scan) : null, workLog: workLog(), technicianNotes: $("rNotes").value }); }
+function reportUser() { return JSON.stringify({ beforeAfter: baRows(), deepChecks: deepResults(), before: keyMetrics(S.firstScan), after: S.firstScan?.scannedAt !== S.scan?.scannedAt ? keyMetrics(S.scan) : null, workLog: workLog(), technicianNotes: $("rNotes").value }); }
 function basicReport() {
   const done = S.jobs.filter(j => j.action !== "scan" && j.status === "done");
   const q = S.scan ? quickPlan(S.scan) : { findings: [], manual: [] };
@@ -853,7 +1036,7 @@ function basicReport() {
     issuesFound: q.findings.filter(f => f.severity !== "info").map(f => f.title + ": " + f.detail).concat(S.jobs.filter(j => j.status === "failed").map(j => "Could not complete: " + j.title + " (" + j.error + ")")),
     recommendations: q.manual.map(m => m.title + " — " + m.detail), technicalNotes: "" };
 }
-function useReport(r) { if (!r || typeof r !== "object") throw new Error("Reply didn't contain a report"); S.report = r; renderReport(); }
+function useReport(r) { if (!r || typeof r !== "object") throw new Error("Reply didn't contain a report"); S.report = r; renderReport(); updateFlow(); }
 $("reportBtn").onclick = async () => {
   if (getAI().provider === "manual") { $("reportCopy").onclick(); openPaste("report"); $("reportStatus").textContent = "Copied. Paste it into your AI app, then paste its reply in the box below."; return; }
   $("reportStatus").innerHTML = '<span class="spin"></span> Writing report…';
@@ -861,7 +1044,7 @@ $("reportBtn").onclick = async () => {
   catch (e) { $("reportStatus").textContent = "AI unavailable (" + e.message + ") — made a basic report instead."; useReport(basicReport()); }
 };
 $("reportBasicBtn").onclick = () => { $("reportStatus").textContent = ""; useReport(basicReport()); };
-$("reportCopy").onclick = () => copyText(REPORT_SYSTEM + "\n\n" + reportUser());
+$("reportCopy").onclick = () => copyText(chatPrompt(REPORT_SYSTEM, reportUser(), "headline, customerSummary, workDone, issuesFound, recommendations, technicalNotes"));
 $("reportUsePaste").onclick = () => {
   try { useReport(parseJSON($("reportPaste").value)); $("reportPaste").value = ""; $("reportStatus").textContent = ""; }
   catch (e) { toast("Couldn't read that reply: " + e.message, 6000); }
@@ -876,6 +1059,7 @@ function reportHTML() {
   <div style="color:#555;font-size:13px">${esc(date)}${$("rRef").value ? " · Ref " + esc($("rRef").value) : ""}${$("rCustomer").value ? " · " + esc($("rCustomer").value) : ""}${$("rTech").value ? " · Technician: " + esc($("rTech").value) : ""}</div>
   <p style="color:#555;font-size:13px">${esc(sys.manufacturer || "")} ${esc(sys.model || "")} · ${esc(sys.os || "")} ${esc(sys.displayVersion || "")} · ${esc(sys.computerName || "")}${total ? " · Space freed: <b>" + esc(fmtBytes(total)) + "</b>" : ""}</p>
   <h2 style="font-size:17px">Summary</h2><p>${esc(r.customerSummary)}</p>
+  ${baRows().length ? `<h2 style="font-size:17px">Before → After</h2><table style="border-collapse:collapse;font-size:14px">${baRows().map(x => `<tr><td style="padding:3px 12px 3px 0;color:#555">${esc(x[0])}</td><td style="padding:3px 8px">${esc(x[1])}</td><td>→ <b>${esc(x[2])}</b></td></tr>`).join("")}</table>` : ""}
   <h2 style="font-size:17px">Work done</h2>${li(r.workDone)}
   <h2 style="font-size:17px">Issues found</h2>${li(r.issuesFound)}
   <h2 style="font-size:17px">Recommendations</h2>${li(r.recommendations)}
@@ -930,7 +1114,7 @@ $("endBtn").onclick = async () => {
   const busy = S.jobs.some(j => j.status === "running");
   if (!confirm((busy ? "A job is still running and will be stopped. " : "") + "End the session? The agent will clean up and close on the PC.")) return;
   try { await api("/api/finish", { method: "POST" }); } catch {}
-  S.ended = true; clearTimeout(pollTimer); $("pcName").textContent = "ended";
+  S.ended = true; clearTimeout(pollTimer); $("pcName").textContent = "ended"; updateFlow();
   if (NATIVE) { localStorage.removeItem("turbo.session"); $("endedHint").textContent = "Your report is saved on this phone (Report tab)."; }
   show("ended");
   document.querySelectorAll("nav button").forEach(b => { if (b.dataset.tab !== "report") b.disabled = true; });
@@ -966,8 +1150,10 @@ async function startSession() {
     $("autoRP").checked = S.info.autoRestorePoint;
     $("sessionInfo").textContent = `Agent ${S.info.version} on ${S.info.computer}, started ${new Date(S.info.startedAt).toLocaleTimeString()}.`;
     buildManual();
-    const sc = await api("/api/scan"); S.scan = sc.latest; S.firstScan = sc.first; if (S.scan) renderScan();
-    show(getAI().key || getAI().provider === "openai" ? "scan" : "setup");
+    const sc = await api("/api/scan"); S.scan = sc.latest; S.firstScan = sc.first; if (S.scan) { renderScan(); renderBA(); }
+    S.jobs = (await api("/api/jobs")) || [];
+    if (!S.scan && !S.jobs.some(j => j.action === "scan")) await startScan();   // first scan starts automatically (read-only)
+    show("scan"); updateFlow();
     pollSoon();
     return true;
   } catch (e) {
@@ -980,12 +1166,13 @@ async function startSession() {
   $("versionInfo").textContent = (NATIVE ? "Turbo Button app " : "Turbo Button control page ") + PAGE_VERSION;
   loadAI(); loadHistory();
   if (!S.token) {
-    $("pcName").textContent = "not connected"; show("setup");
+    $("pcName").textContent = "not connected"; show("setup"); updateFlow();
     if (!NATIVE) toast("Scan the QR code shown on the PC to connect.", 8000);
     return;
   }
   const ok = await startSession();
   if (!ok && NATIVE) localStorage.removeItem("turbo.session");
+  updateFlow();
 })();
 </script>
 </body>

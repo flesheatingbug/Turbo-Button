@@ -171,7 +171,13 @@ var Catalog = []Action{
 	{ID: "defender_offline_scan", Title: "Microsoft Defender offline scan (restarts NOW)", Category: "security", Risk: "high", Reboot: true,
 		Desc: "Restarts immediately into a deep malware scan (~15 min) for rootkits. Ends the session."},
 
-	// ---- Diagnostics ----
+	// ---- Diagnostics (read-only, used by "Deep checks") ----
+	{ID: "sfc_verify", Title: "Verify Windows system files (read-only)", Category: "diagnostics", Risk: "low", Long: true, TimeoutMin: 60,
+		Desc: "sfc /verifyonly: checks system files for corruption without changing anything (5-20 min)."},
+
+	{ID: "dism_check", Title: "Check the Windows image for corruption (read-only)", Category: "diagnostics", Risk: "low", Long: true, TimeoutMin: 60,
+		Desc: "DISM /ScanHealth: checks the component store for corruption without repairing (5-15 min)."},
+
 	{ID: "disk_usage", Title: "Find what's using disk space", Category: "diagnostics", Risk: "low", Long: true, TimeoutMin: 30,
 		Desc: "Measures user folders (Desktop, Documents, Downloads, Pictures, Videos, AppData...) and big system folders. Read-only."},
 }
