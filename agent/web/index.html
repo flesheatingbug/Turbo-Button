@@ -106,6 +106,23 @@
   #boot { position:fixed; inset:0; z-index:70; background:var(--bg); color:var(--text); padding:28px 20px; font:15px/1.7 "Cascadia Mono","Consolas","Roboto Mono",ui-monospace,monospace;
     white-space:pre-wrap; text-shadow:0 0 6px currentColor; }
 
+  #dlg { position:fixed; inset:0; z-index:75; display:none; align-items:center; justify-content:center; padding:18px; background:rgba(0,0,0,.62); backdrop-filter:blur(2px); }
+  #dlg.on { display:flex; animation:dlgIn .16s ease-out; }
+  #dlg .box { width:100%; max-width:440px; background:var(--card, #121a23); border:1px solid var(--line); border-radius:14px; padding:18px 18px 14px; box-shadow:0 18px 60px rgba(0,0,0,.6); }
+  #dlg .box h3 { margin:0 0 10px; font-size:18px; line-height:1.3; }
+  #dlg .box .facts { margin:0 0 12px; padding:0; list-style:none; }
+  #dlg .box .facts li { padding:6px 0; border-top:1px dashed var(--line); font-size:14px; }
+  #dlg .box .facts li:first-child { border-top:0; }
+  #dlg .box .note { color:var(--mut); font-size:13px; margin:0 0 14px; line-height:1.45; }
+  #dlg .box .btns { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; }
+  #dlg .box .btns button { flex:1 1 auto; }
+  #dlg .box.danger { border-color:var(--bad); }
+  #dlg .box.danger h3 { color:var(--bad); }
+  @keyframes dlgIn { from { opacity:0; transform:translateY(8px) scale(.98); } to { opacity:1; transform:none; } }
+  body.term #dlg .box { background:var(--bg); border-radius:2px; border-color:var(--text); box-shadow:0 0 0 1px var(--line), 0 0 30px rgba(51,255,102,.15); }
+  body.term #dlg .box h3 { text-transform:uppercase; letter-spacing:.06em; font-size:16px; }
+  body.term #dlg .box h3::before { content:"▌ "; }
+  body.term #dlg .box.danger h3, body.term #dlg .box.danger { color:var(--bad); border-color:var(--bad); }
   #flash { position:fixed; inset:0; z-index:80; display:none; align-items:center; justify-content:center; pointer-events:none; }
   #flash > div { border:2px solid var(--ok); background:var(--bg); color:var(--ok); padding:18px 26px; font:700 18px/1.4 "Cascadia Mono","Consolas","Roboto Mono",ui-monospace,monospace;
     letter-spacing:.12em; text-align:center; box-shadow:0 0 24px rgba(93,255,135,.5); text-shadow:0 0 8px currentColor; animation:pop 1.5s ease forwards; }
@@ -118,6 +135,7 @@
 </head>
 <body class="term">
 <div id="boot" style="display:none"></div>
+<div id="dlg" role="dialog" aria-modal="true"></div>
 <div id="flash"><div><span id="flashText">PROMPT COPIED ✓</span><small id="flashSub"></small><div class="bar"></div></div></div>
 <header>
   <h1>Turbo Button <i>●</i></h1>
@@ -285,7 +303,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.9.4";
+const PAGE_VERSION = "0.9.5";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -490,6 +508,28 @@ function explainNoPlan(t, err) {
 }
 
 // ---------- catalog & validation ----------
+// ---------- themed dialogs (instead of the browser's plain confirm box) ----------
+// ask({ title, facts: [lines], note, ok, cancel, danger }) -> Promise<boolean>
+let dlgDone = null;
+function ask(o) {
+  if (typeof o === "string") o = { title: o };
+  if (dlgDone) dlgDone(false);
+  const d = $("dlg");
+  d.innerHTML = `<div class="box${o.danger ? " danger" : ""}"><h3>${esc(o.title || "Are you sure?")}</h3>` +
+    ((o.facts || []).length ? `<ul class="facts">${o.facts.map(f => `<li>${esc(f)}</li>`).join("")}</ul>` : "") +
+    (o.note ? `<p class="note">${esc(o.note)}</p>` : "") +
+    `<div class="btns">${o.cancel === false ? "" : `<button class="b2" data-a="0">${esc(o.cancel || "Cancel")}</button>`}<button class="b" data-a="1">${esc(o.ok || "OK")}</button></div></div>`;
+  d.classList.add("on");
+  return new Promise(res => {
+    const key = (e) => { if (e.key === "Escape") finish(false); else if (e.key === "Enter") finish(true); };
+    const finish = (v) => { if (!dlgDone) return; dlgDone = null; d.classList.remove("on"); d.innerHTML = ""; document.removeEventListener("keydown", key); res(v); };
+    dlgDone = finish;
+    d.querySelectorAll("[data-a]").forEach(b => b.onclick = () => finish(b.dataset.a === "1"));
+    d.onclick = (e) => { if (e.target === d && o.cancel !== false) finish(false); };
+    document.addEventListener("keydown", key);
+    setTimeout(() => d.querySelector('[data-a="1"]')?.focus(), 30);
+  });
+}
 const isLinux = (sess = S) => sess?.info?.os === "linux";
 const act = (id) => S.info?.catalog.find(a => a.id === id);
 function validate(p) {
@@ -563,14 +603,14 @@ function renderScan() {
   $("scanView").innerHTML = html;
   $("scanView").querySelectorAll("[data-st]").forEach(b => b.onclick = async () => {
     const x = st[+b.dataset.st];
-    if (!confirm(`Disable startup entry "${x.name}"?`)) return;
+    if (!await ask({ title: "Disable this startup app?", facts: [x.name], note: "It stops launching when the PC starts. The app itself still works when opened.", ok: "Disable" })) return;
     try { await (isLinux() ? queue("autostart_disable", { path: x.path }, "Disabled manually from scan") : queue("startup_disable", { location: x.location, name: x.name }, "Disabled manually from scan")); toast("Queued"); } catch (e) { toast(e.message); }
   });
   $("scanView").querySelectorAll("[data-rs]").forEach(b => b.onclick = async () => {
     try { await queue("service_restart", { name: b.dataset.rs }, "Restarted manually from scan"); toast("Queued"); } catch (e) { toast(e.message); }
   });
   $("scanView").querySelectorAll("[data-app]").forEach(b => b.onclick = async () => {
-    if (!confirm(`Remove app "${b.dataset.app}" for all users?`)) return;
+    if (!await ask({ title: "Remove this app?", facts: [b.dataset.app], note: "Removed for every user on this PC.", ok: "Remove", danger: true })) return;
     try { await queue("app_remove", { name: b.dataset.app }, "Removed manually from scan"); toast("Queued"); } catch (e) { toast(e.message); }
   });
 }
@@ -791,7 +831,7 @@ function renderPlan() {
   $("runSel").onclick = async () => {
     const sel = props.filter(x => x._sel);
     if (!sel.length) return;
-    if (!confirm(`Run ${sel.length} action(s) on this PC?`)) return;
+    if (!await ask({ title: `Run ${sel.length} fix${sel.length === 1 ? "" : "es"} on ${S.name || "this PC"}?`, facts: sel.slice(0, 6).map(x => (act(x.action)?.title || x.action) + (Object.keys(x.params || {}).length ? " · " + Object.values(x.params).join(", ") : "")).concat(sel.length > 6 ? [`…and ${sel.length - 6} more`] : []), note: "A restore point is made before the first change (if enabled in settings).", ok: "Run" })) return;
     for (const x of sel) {
       try { await queue(x.action, x.params, x.reason); x._queued = true; x._sel = false; }
       catch (e) { x._err = e.message; }
@@ -1429,7 +1469,7 @@ function loadHistory() {
     f.setAttribute("sandbox", ""); f.style.cssText = "width:100%;height:70vh;border:0;background:#fff;border-radius:10px"; f.srcdoc = html; $("historyView").appendChild(f);
   });
   $("historyList").querySelectorAll("[data-share]").forEach(b => b.onclick = () => window.TurboNative.shareReport(b.dataset.share));
-  $("historyList").querySelectorAll("[data-del]").forEach(b => b.onclick = () => { if (confirm("Delete this report from the phone?")) { window.TurboNative.deleteReport(b.dataset.del); $("historyView").innerHTML = ""; loadHistory(); } });
+  $("historyList").querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { if (await ask({ title: "Delete this report?", note: "Removed from this phone. Copies you already shared stay where they are.", ok: "Delete", danger: true })) { window.TurboNative.deleteReport(b.dataset.del); $("historyView").innerHTML = ""; loadHistory(); } });
 }
 
 // ---------- look ----------
@@ -1472,13 +1512,14 @@ function saveRecord(sess = S) {
   catch { try { localStorage.setItem("turbo.jobs", JSON.stringify({ [mid]: { ...recs[mid], firstScan: null } })); } catch {} }
 }
 function dropRecord(mid) { if (!mid) return; const recs = loadRecords(); delete recs[mid]; try { localStorage.setItem("turbo.jobs", JSON.stringify(recs)); } catch {} }
-function offerContinue(sess) {
+async function offerContinue(sess) {
   const mid = sess.info?.machineId; if (!NATIVE || !mid || sess.info.resumed || sess.prevJobs) return;
   const r = loadRecords()[mid];
   if (!r || r.token === sess.token || Date.now() - r.updated > 14 * 864e5) return;
   const done = (r.jobs || []).filter(j => j.status === "done").length;
   const when = new Date(r.updated).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
-  if (confirm(`Continue the previous job on ${r.name}?\n\nLast worked on ${when}: ${done} fix(es) done${r.plan ? ", plan saved" : ""}.\n\nOK = continue (keeps the "before" scan, plan, work log and report details)\nCancel = start fresh`)) {
+  const facts = [`Last worked on ${when}`, `${done} fix${done === 1 ? "" : "es"} done` + (r.plan ? " · plan saved" : "") + (r.form?.rCustomer ? " · " + r.form.rCustomer : "")];
+  if (await ask({ title: `Welcome back to ${r.name}`, facts, note: "Continue to keep the first visit's before scan, plan, work log and report details, so the report covers both visits.", ok: "Continue job", cancel: "Start fresh" })) {
     Object.assign(sess, { keepFirst: r.firstScan || null, prevJobs: (r.jobs || []).map(j => ({ ...j, earlier: true })), plan: r.plan || null, form: r.form || {}, savedReport: r.savedReport || null, report: null });
     if (r.firstScan) sess.firstScan = r.firstScan;
     toast(`Continuing the job on ${r.name}. Rescan to compare with the first visit.`, 6000);
@@ -1537,9 +1578,9 @@ function renderPCs() {
   }).join("");
   list.querySelectorAll("[data-open]").forEach(b => b.onclick = () => { switchTo(SESS[+b.dataset.open]); show("scan"); });
   list.querySelectorAll("[data-retry]").forEach(b => b.onclick = () => { const x = SESS[+b.dataset.retry]; clearTimeout(x.timer); x.info ? poll(x) : startSession(x); });
-  list.querySelectorAll("[data-forget]").forEach(b => b.onclick = () => {
+  list.querySelectorAll("[data-forget]").forEach(b => b.onclick = async () => {
     const x = SESS[+b.dataset.forget];
-    if (!confirm(`Forget ${x.name || "this PC"} on the phone? (The agent keeps running on the PC; use End to close it there.)`)) return;
+    if (!await ask({ title: `Forget ${x.name || "this PC"}?`, note: "Removed from this phone only. The agent keeps running on the PC; use End to close it there.", ok: "Forget" })) return;
     dropSession(x);
   });
   $("pcName").textContent = S.info ? (S.name || "PC") + (SESS.length > 1 ? " ▾" : "") : (SESS.length ? "connecting…" : "no PC");
@@ -1576,7 +1617,7 @@ function renderSession() {
 $("endBtn").onclick = async () => {
   if (!S.info) { toast("Not connected to a PC"); return; }
   const busy = S.jobs.some(j => j.status === "running");
-  if (!confirm((busy ? "A job is still running and will be stopped. " : "") + `End the session on ${S.name}? The agent cleans up and closes on that PC.`)) return;
+  if (!await ask({ title: `End the session on ${S.name}?`, note: (busy ? "A job is still running and will be stopped. " : "") + "The agent cleans up after itself and closes on that PC.", ok: "End session", danger: busy })) return;
   try { await api("/api/finish", { method: "POST" }); } catch {}
   const ended = S;
   if (NATIVE) {
@@ -1621,7 +1662,7 @@ async function startSession(sess) {
     const info = await api("/api/info", {}, sess);
     const fresh = !sess.info;
     sess.info = info; sess.name = info.computer; sess.ended = false; sess.status = "ok";
-    if (fresh) offerContinue(sess);
+    if (fresh) await offerContinue(sess);
     const sc = await api("/api/scan", {}, sess); sess.scan = sc.latest; sess.firstScan = sess.keepFirst || sc.first;
     sess.jobs = (await api("/api/jobs", {}, sess)) || [];
     if (!sess.scan && !sess.jobs.some(j => j.action === "scan")) {   // first scan starts automatically (read-only)
