@@ -46,3 +46,26 @@ function Get-RecycleSize {
   return $s
 }
 # --- end prelude ---
+
+# --- shared helpers (v0.3) ---
+function Get-Winget {
+  $c = Get-Command winget.exe -ErrorAction SilentlyContinue
+  if ($c) { return $c.Source }
+  $w = Get-ChildItem "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+  if ($w) { return $w.FullName }
+  return $null
+}
+# Last visible text of a console line (drops spinner/progress-bar redraws).
+function Clean-Line($l) {
+  $t = ("$l" -split "`r")[-1]
+  $t = ($t -replace '[\u2580-\u259F]', '').Trim()
+  if ($t -match '^[\-\\|/ ]*$') { return $null }
+  if ($t -match '^\d+(\.\d+)?\s*(B|KB|MB|GB)\s*/\s*\d') { return $null }
+  return $t
+}
+function Backup-Dir {
+  $d = "$env:ProgramData\TurboButton\backups"
+  New-Item -ItemType Directory -Path $d -Force | Out-Null
+  return $d
+}
+$UninstallKeys = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'

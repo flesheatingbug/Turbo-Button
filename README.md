@@ -7,6 +7,13 @@ AI-assisted Windows tune-ups for computer repair technicians. It has two parts:
 
 Both use the same control page, `agent/web/index.html`. The `.exe` serves it to phone browsers, and the app bundles it.
 
+## What it can do (v0.3)
+
+- **Scan:** hardware and drive health, startup speed and what's slowing it, blue screens with likely causes, CPU and memory pressure, temperatures, junk files, startup apps, bloat, installed programs, security status, update status, and browser/network hijacks (search engine, extensions, forced policies, proxy, DNS, hosts file).
+- **Fix:** clean-ups, startup and bloat removal, privacy and ad tweaks, uninstalling junk programs, Windows Update (including drivers), updating all programs (winget), resetting adware hijacks (proxy, DNS, hosts, browser policies), resetting Windows Update, the network stack, the Store and the search index, SFC/DISM, CHKDSK, memory tests, Defender scans (including offline), and a restart at the end.
+- **The PC window shows a live activity log**, so the customer can see what's being done.
+- **Safety:** every change needs approval on the phone, and a restore point is created first. Drivers, runtimes, Office and security software can't be uninstalled. Proxy, DNS and policy resets are never proposed on business (domain) PCs. Backups of the hosts file and browser policies go to `C:\ProgramData\TurboButton\backups`.
+
 ## Getting the APK and EXE (no Android Studio needed)
 
 1. Create a **private** GitHub repo and push this folder to it.

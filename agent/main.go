@@ -15,7 +15,7 @@ import (
 const port = 47800
 
 func main() {
-	setupConsole()
+	vt := setupConsole()
 	if !isAdmin() {
 		fmt.Println("Turbo Button needs administrator rights. Asking Windows to restart it as administrator...")
 		if err := relaunchAsAdmin(); err != nil {
@@ -52,6 +52,9 @@ func main() {
 		fmt.Println("Done. Nothing from Turbo Button is left on this PC (any restore point and approved changes stay).")
 	}
 
+	con := &Console{color: vt}
+	a.OnEvent = con.Handle
+
 	srv := &http.Server{Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go srv.Serve(ln)
 
@@ -64,19 +67,6 @@ func main() {
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		t := time.NewTicker(time.Second)
-		shown := false
-		for range t.C {
-			a.mu.Lock()
-			seen := a.phoneSeen
-			a.mu.Unlock()
-			if seen && !shown {
-				shown = true
-				fmt.Println(">> Phone connected. Control the session from the phone.")
-			}
-		}
-	}()
 	select {
 	case <-sig:
 	case <-a.finishing:
@@ -106,6 +96,8 @@ func printBanner(url string, ips []string, port int) {
 	}
 	fmt.Println()
 	fmt.Println("Close this window or press Ctrl+C to end the session and clean up.")
+	fmt.Println("--------------------------------------------------------------")
+	fmt.Println("  LIVE ACTIVITY")
 	fmt.Println("--------------------------------------------------------------")
 }
 

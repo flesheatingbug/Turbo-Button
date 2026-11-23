@@ -197,7 +197,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.2.2";
+const PAGE_VERSION = "0.3.0";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -379,6 +379,7 @@ function renderScan() {
     ${s.battery ? gbRow("Battery health", (s.battery.healthPct ?? "?") + "%") : ""}
   </div></div>`;
   const st = (s.startup || []);
+  html += diagCards(s);
   html += `<div class="card"><h2>Startup apps (${st.filter(x => x.enabled).length} enabled)</h2><div class="list">` + st.map((x, i) =>
     `<div class="li"><div class="t">${esc(x.name)}<div class="params">${esc(x.location)} · ${esc(x.command)}</div></div>${x.enabled ? `<button class="b2 sm" data-st="${i}">Disable</button>` : '<span class="mut">off</span>'}</div>`).join("") + `</div></div>`;
   const apps = (s.apps || []).slice().sort((a, b) => (b.likelyBloat - a.likelyBloat) || a.name.localeCompare(b.name));
@@ -397,6 +398,68 @@ function renderScan() {
     if (!confirm(`Remove app "${b.dataset.app}" for all users?`)) return;
     try { await queue("app_remove", { name: b.dataset.app }, "Removed manually from scan"); toast("Queued"); } catch (e) { toast(e.message); }
   });
+}
+
+// ---------- diagnostics display ----------
+const BUGCHECKS = {
+  "0xA": ["IRQL_NOT_LESS_OR_EQUAL", "driver"], "0xD1": ["DRIVER_IRQL_NOT_LESS_OR_EQUAL", "driver"], "0x1E": ["KMODE_EXCEPTION_NOT_HANDLED", "driver"],
+  "0x3B": ["SYSTEM_SERVICE_EXCEPTION", "driver"], "0x7E": ["SYSTEM_THREAD_EXCEPTION_NOT_HANDLED", "driver"], "0x9F": ["DRIVER_POWER_STATE_FAILURE", "driver (sleep/power)"],
+  "0xC4": ["DRIVER_VERIFIER_DETECTED_VIOLATION", "driver"], "0xC2": ["BAD_POOL_CALLER", "driver"], "0x19": ["BAD_POOL_HEADER", "driver or RAM"],
+  "0x50": ["PAGE_FAULT_IN_NONPAGED_AREA", "RAM or driver"], "0x1A": ["MEMORY_MANAGEMENT", "RAM"], "0x4E": ["PFN_LIST_CORRUPT", "RAM"],
+  "0x7A": ["KERNEL_DATA_INPAGE_ERROR", "disk or cable"], "0x77": ["KERNEL_STACK_INPAGE_ERROR", "disk"], "0x24": ["NTFS_FILE_SYSTEM", "disk / file system"],
+  "0xED": ["UNMOUNTABLE_BOOT_VOLUME", "disk"], "0x7B": ["INACCESSIBLE_BOOT_DEVICE", "disk / storage driver"],
+  "0x124": ["WHEA_UNCORRECTABLE_ERROR", "hardware (CPU, RAM, overheating, overclock)"], "0x101": ["CLOCK_WATCHDOG_TIMEOUT", "CPU / hardware"],
+  "0x116": ["VIDEO_TDR_FAILURE", "graphics driver or GPU"], "0x119": ["VIDEO_SCHEDULER_INTERNAL_ERROR", "graphics driver"], "0x10E": ["VIDEO_MEMORY_MANAGEMENT_INTERNAL", "graphics driver"],
+  "0x133": ["DPC_WATCHDOG_VIOLATION", "driver or SSD firmware"], "0x139": ["KERNEL_SECURITY_CHECK_FAILURE", "driver or RAM"],
+  "0xEF": ["CRITICAL_PROCESS_DIED", "corrupt system files or disk"], "0xF4": ["CRITICAL_OBJECT_TERMINATION", "disk"], "0xC000021A": ["STATUS_SYSTEM_PROCESS_TERMINATED", "corrupt system files"],
+  "0x1000007E": ["SYSTEM_THREAD_EXCEPTION_NOT_HANDLED_M", "driver"], "0x1000008E": ["KERNEL_MODE_EXCEPTION_NOT_HANDLED_M", "driver or RAM"], "0x109": ["CRITICAL_STRUCTURE_CORRUPTION", "driver or RAM"],
+  "0x1D8": ["ATTEMPTED_SWITCH_FROM_DPC", "driver"], "0x14F": ["PDC_WATCHDOG_TIMEOUT", "driver / firmware"], "0x15F": ["CONNECTED_STANDBY_WATCHDOG_TIMEOUT_LIVEDUMP", "driver (sleep)"]
+};
+function bugInfo(code) { const b = BUGCHECKS[String(code || "").toUpperCase().replace(/^0X/, "0x")]; return b ? `${b[0]} — likely ${b[1]}` : "uncommon code — look it up"; }
+const SEARCH_OK = /(google\.|bing\.com|duckduckgo\.com|yahoo\.|ecosia\.org|brave\.com|startpage\.com|qwant\.com|yandex\.|baidu\.com|kagi\.com|perplexity\.ai|chatgpt\.com)/i;
+const ADWARE_EXT = /(search|coupon|shopping|deal|price|cashback|pdf ?(converter|maker|editor)|weather|video ?download|savefrom|youtube ?(download|converter)|free ?vpn|toolbar|manuals?|maps ?(now|search)|track ?package|recipe|new ?tab|homepage|start ?page|games?\b|tab ?(manager)?|speed ?test|translator|converter)/i;
+const WELL_KNOWN_DNS = /^(8\.8\.(8\.8|4\.4)|1\.1\.1\.1|1\.0\.0\.1|9\.9\.9\.9|149\.112\.112\.112|208\.67\.22[02]\.22[02]|94\.140\.1[45]\.1[45]|76\.76\.(2|10)\.\d+)$/;
+const isPrivIP = (ip) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.|169\.254\.|fe80:|::1|fd)/i.test(ip);
+function adwareSigns(s) {
+  const bn = s.browsersAndNetwork || {}, out = { badSearch: [], extFlags: [], forced: [], proxy: null, dns: [], hosts: [] };
+  for (const b of bn.browserSettings || []) if (b.searchUrl && !SEARCH_OK.test(b.searchUrl)) out.badSearch.push(`${b.browser} (${b.user}): ${b.searchUrl}`);
+  for (const e of bn.extensions || []) if (ADWARE_EXT.test(e.name || "")) out.extFlags.push(`${e.name} — ${e.browser}, ${e.user}`);
+  for (const p of bn.browserPolicies || []) if ((p.forcedExtensions || []).length || p.homepage || p.searchUrl) out.forced.push(p);
+  const px = bn.proxy || {};
+  if (px.enabled === 1 || px.autoConfigUrl) out.proxy = px.autoConfigUrl || px.server || "on";
+  for (const d of bn.dns || []) if (d.manual && (d.servers || []).some(ip => !isPrivIP(ip) && !WELL_KNOWN_DNS.test(ip))) out.dns.push(`${d.adapter}: ${d.servers.join(", ")}`);
+  out.hosts = (bn.hostsEntries || []).filter(h => !/^(127\.0\.0\.1|::1)\s+localhost$/i.test(h));
+  return out;
+}
+function diagCards(s) {
+  let h = "";
+  const bp = s.bootPerformance || {}, last = (bp.recentBoots || [])[0];
+  if (last || (bp.slowdowns || []).length) {
+    h += `<div class="card"><h2>Startup speed</h2><div class="kv">` + (last ? gbRow("Last boot", `${last.bootSec}s (desktop after ${last.toDesktopSec}s, settled ${last.afterLoginSec}s later)`) : "") + `</div>`;
+    if ((bp.slowdowns || []).length) h += `<div class="mut" style="margin-top:6px">Slowing it down:</div>` + bp.slowdowns.slice(0, 6).map(x => `<div class="params">${esc(x.kind)} · ${esc(x.name)} · up to ${esc(x.worstDelaySec)}s</div>`).join("");
+    h += `</div>`;
+  }
+  const cr = s.crashes || {};
+  if ((cr.bugchecks90d || []).length || cr.hardwareErrors90d) {
+    h += `<div class="card"><h2>Blue screens (90 days)</h2>` + (cr.bugchecks90d || []).slice(0, 8).map(b => `<div class="params">${esc((b.when || "").slice(0, 10))} · ${esc(b.code)} · ${esc(bugInfo(b.code))}</div>`).join("") +
+      (cr.hardwareErrors90d ? `<div class="mut">Hardware error reports (WHEA): ${esc(cr.hardwareErrors90d)}</div>` : "") + `</div>`;
+  }
+  const pf = s.performance;
+  if (pf) h += `<div class="card"><h2>Right now</h2><div class="kv">${gbRow("CPU", pf.cpuNowPct + "%")}${gbRow("Memory in use", pf.committedPct + "% committed, " + pf.availableMB + " MB free")}${(pf.topCpu || []).length ? gbRow("Busiest", pf.topCpu.join(", ")) : ""}${(pf.thermalZonesC || []).length ? gbRow("Temperature", pf.thermalZonesC.join(" / ") + " °C") : ""}</div></div>`;
+  const ad = adwareSigns(s), bn = s.browsersAndNetwork || {};
+  if (bn.extensions || bn.dns) {
+    const flags = ad.badSearch.length + ad.extFlags.length + ad.forced.length + (ad.proxy ? 1 : 0) + ad.dns.length + (ad.hosts.length ? 1 : 0);
+    h += `<div class="card"><details><summary>Browsers & network — ${flags ? flags + " warning sign(s)" : "nothing suspicious"}</summary>`;
+    if (ad.badSearch.length) h += `<div style="color:var(--bad)">Hijacked search: ${ad.badSearch.map(esc).join("<br>")}</div>`;
+    if (ad.forced.length) h += `<div style="color:var(--bad)">Forced browser policies: ${ad.forced.map(p => esc(p.key)).join(", ")}</div>`;
+    if (ad.proxy) h += `<div style="color:var(--warn)">Proxy set: ${esc(ad.proxy)}</div>`;
+    if (ad.dns.length) h += `<div style="color:var(--warn)">Manual DNS: ${ad.dns.map(esc).join("; ")}</div>`;
+    if (ad.hosts.length) h += `<div style="color:var(--warn)">Hosts file entries: ${ad.hosts.length}</div>`;
+    h += `<div class="mut" style="margin-top:6px">Extensions (${(bn.extensions || []).length}):</div>` + (bn.extensions || []).map(e => `<div class="params">${ADWARE_EXT.test(e.name || "") ? "⚑ " : ""}${esc(e.name)} · ${esc(e.browser)} · ${esc(e.user)}</div>`).join("");
+    h += `</details></div>`;
+  }
+  if (s.memoryTest) h += `<div class="card"><h2>Last memory test</h2><div class="mut">${esc((s.memoryTest.when || "").slice(0, 10))}: ${esc(s.memoryTest.message)}</div></div>`;
+  return h;
 }
 
 // ---------- AI plan ----------
@@ -419,6 +482,12 @@ Rules:
 - Apps or startup items the customer may actively use (chat, music, cloud sync, VPN, games, printers, peripherals, OEM audio/touchpad tools) → askCustomer true. Clear junk (OEM trialware, updaters, toolbars, ads) → fine to propose.
 - Prefer fixing root causes found in events/health (failing disk, crashes, low space) over cosmetic tweaks. Flag hardware problems in findings/manual.
 - Put long actions (sfc, dism_restore, defender full scan) last, and dism_restore before sfc if corruption is suspected.
+- Updates: propose windows_update {mode:"install"} when updates are stale (drivers:true only if there are problem devices), and app_updates {mode:"install"} when winget is available. Use reset_windows_update first only if updates haven't installed for 60+ days.
+- program_uninstall only for clear junk/trialware/adware (askCustomer true unless it is obviously malicious); use the exact name from scan.programs. If uninstall is "none"/"interactive" with no winget, put it in "manual" instead.
+- Adware: hijacked browser search/homepage, forced browser policies, odd proxies, manual DNS to unknown servers and hosts-file redirects are red flags. NEVER propose remove_browser_policies, reset_dns or reset_proxy on a domain-joined (business) PC; elsewhere set askCustomer true.
+- Blue screens: interpret bugcheck codes (driver vs RAM vs disk vs GPU vs hardware) in findings; propose schedule_memory_test for RAM-type codes and schedule_chkdsk for disk-type codes.
+- Slow boot: name the worst offenders from bootPerformance.slowdowns.
+- Any action that needs a restart (windows_update install, network_reset, schedule_*) means proposing restart_pc {minutes:"1"} as the VERY LAST proposal with askCustomer true. Never propose defender_offline_scan unless malware is strongly suspected (it restarts immediately).
 - Things the agent cannot do (uninstalling desktop programs, driver updates, BIOS, hardware) go in "manual".
 Reply with JSON only, no prose, in this shape:
 {"summary":"2-4 sentences for the technician","health":"good|fair|poor","findings":[{"severity":"info|warn|critical","title":"","detail":""}],"proposals":[{"action":"id","params":{},"reason":"why","risk":"low|medium|high","askCustomer":false}],"manual":[{"title":"","detail":""}]}`;
@@ -559,12 +628,16 @@ function quickPlan(s) {
     const junk = JUNK_APPS.test(a.name);
     prop("app_remove", { name: a.name }, junk ? "Preinstalled app few people use." : "Preinstalled/promoted app — remove only if the customer doesn't use it.", "medium", !junk);
   }
-  // Desktop programs (manual)
+  // Desktop programs: uninstall junk where a silent uninstaller exists, otherwise hand to the tech
   const badProgs = (s.programs || []).filter(p => JUNK_PROGRAMS.test(p.name + " " + (p.publisher || "")));
-  if (badProgs.length) {
-    M.push({ title: "Uninstall junk / trial software", detail: badProgs.map(p => p.name).join(", ") + ". Check with the customer, then uninstall via Settings → Apps (use the vendor removal tool for McAfee/Norton)." });
-    find("warn", "Trialware or 'optimizer' software installed", badProgs.map(p => p.name).join(", "));
+  const canWinget = !!s.updates?.wingetAvailable;
+  const manualProgs = [];
+  for (const p of badProgs) {
+    if (p.uninstall === "quiet" || p.uninstall === "msi" || canWinget) prop("program_uninstall", { name: p.name }, `Trialware/junk: ${p.name}. Check the customer doesn't rely on it.`, "medium", true);
+    else manualProgs.push(p.name);
   }
+  if (badProgs.length) find("warn", "Trialware or 'optimizer' software installed", badProgs.map(p => p.name).join(", "));
+  if (manualProgs.length) M.push({ title: "Uninstall by hand", detail: manualProgs.join(", ") + " — no silent uninstaller. Use Settings → Apps, or the vendor removal tool (McAfee MCPR, Norton Remove and Reinstall)." });
 
   // Settings
   if (s.power?.fastStartup === 1) prop("fast_startup", { enabled: false }, "Fast Startup stops 'Shut down' from fully resetting Windows and causes driver/update issues.");
@@ -612,8 +685,53 @@ function quickPlan(s) {
   if (s.updates?.rebootPending) find("info", "Restart pending", "Windows is waiting for a restart to finish updates — restart before handing back.");
   if ((sys.uptimeHours || 0) > 168) find("info", "Not restarted in over a week", `Up ${Math.round(sys.uptimeHours / 24)} days.`);
 
-  // Order: quick cleanups → startup/apps → settings → security → disk → long repairs last
-  const order = ["cleanup", "component_cleanup", "startup_disable", "app_remove", "fast_startup", "privacy", "defender_update", "defender_scan", "chkdsk_scan", "optimize_drive", "dism_restore", "sfc"];
+  // Updates
+  const upd = s.updates || {};
+  const stale = upd.daysSinceLastUpdate == null || upd.daysSinceLastUpdate > 7;
+  if (upd.daysSinceLastUpdate != null && upd.daysSinceLastUpdate > 60) {
+    find("warn", "Windows Update hasn't worked for a while", `Last update installed ${upd.daysSinceLastUpdate} days ago.`);
+    prop("reset_windows_update", {}, "Updates look stuck: reset the update components first.", "medium");
+  }
+  if (stale) prop("windows_update", { mode: "install", drivers: (s.problemDevices || []).length > 0 }, upd.daysSinceLastUpdate == null ? "Install any pending Windows updates." : `Last Windows update was ${upd.daysSinceLastUpdate} days ago.`);
+  if (canWinget) prop("app_updates", { mode: "install" }, "Update outdated programs (browsers, readers, runtimes) silently with winget.");
+
+  // Adware / hijacks
+  const ad = adwareSigns(s), business = !!sys.partOfDomain;
+  if (business) find("info", "Business PC", `Joined to domain ${sys.domain || ""}. Proxy, DNS and browser policies are probably set by the company — left alone.`);
+  if (ad.badSearch.length) { find("critical", "Browser search hijacked", ad.badSearch.join("; ")); M.push({ title: "Reset browser settings", detail: "In the affected browser: Settings → Reset settings (restores search engine, homepage, startup pages). Then remove unknown extensions." }); }
+  if (ad.extFlags.length) { find("warn", "Suspicious browser extensions", ad.extFlags.join("; ")); M.push({ title: "Review browser extensions", detail: "Remove unknown extensions in each browser (chrome://extensions, edge://extensions, about:addons): " + ad.extFlags.join("; ") }); }
+  if (ad.forced.length) { find(business ? "info" : "critical", "Forced browser policies", ad.forced.map(p => p.key + ((p.forcedExtensions || []).length ? " (forces " + p.forcedExtensions.length + " extension(s))" : "")).join("; ")); if (!business) prop("remove_browser_policies", {}, "Adware-style policies force extensions/homepage/search on the browsers. A backup is kept.", "high", true); }
+  if (ad.proxy && !business) { find("warn", "Proxy configured", ad.proxy); prop("reset_proxy", {}, "A proxy can redirect browsing through adware.", "medium", true); }
+  if (ad.dns.length && !business) { find("warn", "Manually set DNS servers", ad.dns.join("; ")); prop("reset_dns", {}, "Unknown DNS servers can redirect websites.", "medium", true); }
+  const secBlock = ad.hosts.filter(h => /(malwarebytes|eset|kaspersky|avast|avg\.|norton|mcafee|bitdefender|sophos|virustotal|microsoft\.com|windowsupdate|update\.microsoft|emsisoft|hitmanpro|adwcleaner)/i.test(h));
+  if (secBlock.length) find("critical", "Hosts file blocks security/update sites", secBlock.slice(0, 5).join("; ") + " — typical of malware.");
+  else if (ad.hosts.length) { find(ad.hosts.length > 5 ? "warn" : "info", "Hosts file has entries", ad.hosts.slice(0, 5).join("; ") + (ad.hosts.length > 5 ? " …" : "")); }
+  if (secBlock.length || (ad.hosts.length && !business)) prop("reset_hosts", {}, secBlock.length ? "The hosts file blocks security/update sites — restore the default. A backup is kept." : "Hosts entries can block or redirect sites. A backup is kept.", "medium", !secBlock.length);
+
+  // Boot speed, blue screens, performance
+  const lastBoot = s.bootPerformance?.recentBoots?.[0];
+  if (lastBoot && lastBoot.bootSec > 60) find(lastBoot.bootSec > 120 ? "warn" : "info", `Slow startup: ${lastBoot.bootSec}s`, "Worst offenders: " + ((s.bootPerformance.slowdowns || []).slice(0, 4).map(x => `${x.name} (${x.kind}, ${x.worstDelaySec}s)`).join(", ") || "not recorded"));
+  const codes = [...new Set((s.crashes?.bugchecks90d || []).map(b => b.code).filter(Boolean))];
+  for (const cd of codes) find("warn", `Blue screen ${cd}`, bugInfo(cd));
+  const kind = codes.map(cd => (BUGCHECKS[cd] || [])[1] || "").join(" ");
+  if (/RAM/.test(kind) && !s.memoryTest) prop("schedule_memory_test", {}, "Blue-screen codes point at memory: test the RAM at the next restart (10–20 min).", "low", true);
+  if (/disk/.test(kind)) prop("schedule_chkdsk", { drive: "C" }, "Blue-screen codes point at the disk: full disk check at the next restart.", "medium", true);
+  if (/hardware|CPU/.test(kind) || (s.crashes?.hardwareErrors90d || 0) > 0) M.push({ title: "Check hardware", detail: "Hardware-error crashes: check temperatures and dust, remove any overclock/XMP, reseat RAM, test the PSU." });
+  if (/graphics/.test(kind)) M.push({ title: "Reinstall graphics driver", detail: "Graphics-driver crashes: install the latest driver from NVIDIA/AMD/Intel (clean install)." });
+  if (s.memoryTest && /error|problem/i.test(s.memoryTest.message || "") && !/no (memory )?errors|did not detect/i.test(s.memoryTest.message || "")) find("critical", "Memory test found errors", s.memoryTest.message);
+  const pf = s.performance || {};
+  if (pf.committedPct > 85) find("warn", "Memory pressure", `${pf.committedPct}% of memory committed with ${pf.availableMB} MB free — too many programs for the RAM.`);
+  if (pf.cpuNowPct > 60) find("warn", "Busy CPU at idle", `${pf.cpuNowPct}% — ` + (pf.topCpu || []).join(", "));
+  if ((pf.thermalZonesC || []).some(t => t >= 85)) find("warn", "Running hot", (pf.thermalZonesC || []).join(" / ") + " °C — clean fans and vents.");
+  if (sysDrive && sysDrive.freePct < 20) prop("disk_usage", {}, "Find what's filling the drive (read-only).");
+
+  // Anything that needs a restart → restart last
+  const needsRestart = P.some(p => ["schedule_memory_test", "schedule_chkdsk", "windows_update"].includes(p.action)) || s.updates?.rebootPending;
+  if (needsRestart) prop("restart_pc", { minutes: "1" }, "Finish updates/scheduled checks. Do this LAST — write the report first; the session ends when the PC restarts.", "medium", true);
+
+  // Order: quick cleanups → startup/apps → settings → security → disk → long repairs → restart last
+  const order = ["disk_usage", "cleanup", "component_cleanup", "program_uninstall", "startup_disable", "app_remove", "remove_browser_policies", "reset_proxy", "reset_dns", "reset_hosts",
+    "fast_startup", "privacy", "defender_update", "defender_scan", "chkdsk_scan", "optimize_drive", "reset_windows_update", "dism_restore", "sfc", "app_updates", "windows_update", "schedule_memory_test", "schedule_chkdsk", "restart_pc"];
   P.sort((a, b) => order.indexOf(a.action) - order.indexOf(b.action));
   const crit = F.filter(f => f.severity === "critical").length, warn = F.filter(f => f.severity === "warn").length;
   const health = crit ? "poor" : warn >= 2 ? "fair" : "good";
@@ -688,6 +806,14 @@ function resultLine(j) {
   if (r.previousMode) bits.push(`${r.previousMode} → ${r.mode}`);
   if (r.detections) bits.push(r.detections.length + " detection(s)");
   if (r.problemsFound != null) bits.push(r.problemsFound ? "problems found" : "no problems");
+  if (j.action === "windows_update") bits.push(r.mode === "install" ? `${r.installed || 0} installed${r.failed ? ", " + r.failed + " failed" : ""}` : `${r.found || 0} update(s) available`);
+  if (j.action === "app_updates") bits.push(r.mode === "install" ? `${r.installed || 0} program(s) updated` : `${r.available || 0} program update(s) available`);
+  if (j.action === "program_uninstall" && r.removed) bits.push(`removed (${r.method})`);
+  if (r.removedEntries != null) bits.push(`${r.removedEntries} hosts entr${r.removedEntries === 1 ? "y" : "ies"} removed`);
+  if (Array.isArray(r.removed) && j.action === "remove_browser_policies") bits.push(r.removed.length + " policy key(s) removed");
+  if (r.changes && j.action === "reset_dns") bits.push(r.changes.length + " adapter(s) reset");
+  if (r.rebootRequired) bits.push("restart needed");
+  if (r.note) bits.push(r.note);
   return bits.join(" · ");
 }
 function renderJobs() {
@@ -711,7 +837,9 @@ function keyMetrics(s) {
   if (!s) return null;
   return { scannedAt: s.scannedAt, system: s.system, volumes: s.volumes, physicalDisks: s.physicalDisks, cleanupPotentialGB: s.cleanupPotentialGB,
     startupEnabled: (s.startup || []).filter(x => x.enabled).map(x => x.name), events: s.events && { errorsLast7Days: s.events.errorsLast7Days, unexpectedShutdowns30d: s.events.unexpectedShutdowns30d, bluescreens30d: s.events.bluescreens30d, diskErrors30d: s.events.diskErrors30d, appCrashes30d: s.events.appCrashes30d },
-    security: s.security, battery: s.battery, problemDevices: s.problemDevices, updates: s.updates };
+    security: s.security, battery: s.battery, problemDevices: s.problemDevices, updates: s.updates,
+    bootSec: s.bootPerformance?.recentBoots?.[0]?.bootSec, bootSlowdowns: (s.bootPerformance?.slowdowns || []).slice(0, 5),
+    blueScreens: (s.crashes?.bugchecks90d || []).map(b => b.code + " " + bugInfo(b.code)), adwareSigns: adwareSigns(s), memoryTest: s.memoryTest };
 }
 function workLog() { return S.jobs.filter(j => j.action !== "scan" && j.status !== "queued").map(j => ({ action: j.title, params: j.params, status: j.status, reason: j.reason, result: j.result, error: j.error, started: j.started, finished: j.finished })); }
 function reportUser() { return JSON.stringify({ before: keyMetrics(S.firstScan), after: S.firstScan?.scannedAt !== S.scan?.scannedAt ? keyMetrics(S.scan) : null, workLog: workLog(), technicianNotes: $("rNotes").value }); }

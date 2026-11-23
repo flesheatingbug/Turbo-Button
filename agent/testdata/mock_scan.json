@@ -1,10 +1,264 @@
-{"scannedAt":"2026-11-22T14:50:00","errors":["battery : not supported"],"system":{"computerName":"CUSTOMER-PC","os":"Microsoft Windows 11 Home","displayVersion":"24H2","build":"26100.2314","manufacturer":"HP","model":"Pavilion 15","cpu":"Intel Core i5-1135G7","cores":4,"threads":8,"ramGB":7.8,"freeRamGB":1.2,"uptimeHours":212.5,"installDate":"2023-03-01","isLaptop":true},
-"volumes":[{"drive":"C","label":"","fs":"NTFS","sizeGB":237.4,"freeGB":9.8,"freePct":4.1,"health":"Healthy"}],
-"physicalDisks":[{"name":"WDC SN530 256GB","mediaType":"SSD","bus":"NVMe","health":"Healthy","wearPct":12,"tempC":41}],
-"cleanupPotentialGB":{"user_temp":3.2,"windows_temp":0.8,"update_cache":2.1,"browser_cache":1.4,"recycle_bin":5.5,"crash_dumps":0.6,"hiberfilGB":3.1,"windowsOldExists":false},
-"startup":[{"location":"HKCU_Run","name":"Spotify","command":"C:\\Users\\a\\AppData\\Roaming\\Spotify\\Spotify.exe /minimized","enabled":true},{"location":"HKLM_Run","name":"HPAudioSwitch","command":"C:\\Program Files\\HP\\HPAudioSwitch.exe","enabled":true},{"location":"HKCU_Run","name":"<img src=x onerror=alert(1)>","command":"evil","enabled":true}],
-"apps":[{"name":"Microsoft.BingNews","publisher":"Microsoft Corporation","likelyBloat":true},{"name":"SpotifyAB.SpotifyMusic","publisher":"Spotify AB","likelyBloat":true},{"name":"Microsoft.WindowsCalculator","publisher":"Microsoft Corporation","likelyBloat":false}],
-"programs":[{"name":"McAfee LiveSafe","publisher":"McAfee, LLC","version":"16.0","sizeMB":900},{"name":"Google Chrome","publisher":"Google LLC","version":"131"}],
-"events":{"errorsLast7Days":412,"unexpectedShutdowns30d":3,"bluescreens30d":1,"diskErrors30d":0,"appCrashes30d":["chrome.exe x4"]},
-"security":{"antivirusProducts":["McAfee LiveSafe","Windows Defender"],"realTime":false,"recentThreats":[]},
-"updates":{"rebootPending":true},"problemDevices":[],"battery":{"healthPct":71}}
+{
+ "scannedAt": "2026-11-22T14:50:00",
+ "errors": [
+  "battery : not supported"
+ ],
+ "system": {
+  "computerName": "CUSTOMER-PC",
+  "os": "Microsoft Windows 11 Home",
+  "displayVersion": "24H2",
+  "build": "26100.2314",
+  "manufacturer": "HP",
+  "model": "Pavilion 15",
+  "cpu": "Intel Core i5-1135G7",
+  "cores": 4,
+  "threads": 8,
+  "ramGB": 7.8,
+  "freeRamGB": 1.2,
+  "uptimeHours": 212.5,
+  "installDate": "2023-03-01",
+  "isLaptop": true,
+  "partOfDomain": false,
+  "domain": null
+ },
+ "volumes": [
+  {
+   "drive": "C",
+   "label": "",
+   "fs": "NTFS",
+   "sizeGB": 237.4,
+   "freeGB": 9.8,
+   "freePct": 4.1,
+   "health": "Healthy"
+  }
+ ],
+ "physicalDisks": [
+  {
+   "name": "WDC SN530 256GB",
+   "mediaType": "SSD",
+   "bus": "NVMe",
+   "health": "Healthy",
+   "wearPct": 12,
+   "tempC": 41
+  }
+ ],
+ "cleanupPotentialGB": {
+  "user_temp": 3.2,
+  "windows_temp": 0.8,
+  "update_cache": 2.1,
+  "browser_cache": 1.4,
+  "recycle_bin": 5.5,
+  "crash_dumps": 0.6,
+  "hiberfilGB": 3.1,
+  "windowsOldExists": false
+ },
+ "startup": [
+  {
+   "location": "HKCU_Run",
+   "name": "Spotify",
+   "command": "C:\\Users\\a\\AppData\\Roaming\\Spotify\\Spotify.exe /minimized",
+   "enabled": true
+  },
+  {
+   "location": "HKLM_Run",
+   "name": "HPAudioSwitch",
+   "command": "C:\\Program Files\\HP\\HPAudioSwitch.exe",
+   "enabled": true
+  },
+  {
+   "location": "HKCU_Run",
+   "name": "<img src=x onerror=alert(1)>",
+   "command": "evil",
+   "enabled": true
+  }
+ ],
+ "apps": [
+  {
+   "name": "Microsoft.BingNews",
+   "publisher": "Microsoft Corporation",
+   "likelyBloat": true
+  },
+  {
+   "name": "SpotifyAB.SpotifyMusic",
+   "publisher": "Spotify AB",
+   "likelyBloat": true
+  },
+  {
+   "name": "Microsoft.WindowsCalculator",
+   "publisher": "Microsoft Corporation",
+   "likelyBloat": false
+  }
+ ],
+ "programs": [
+  {
+   "name": "McAfee LiveSafe",
+   "publisher": "McAfee, LLC",
+   "version": "16.0",
+   "sizeMB": 900,
+   "uninstall": "interactive"
+  },
+  {
+   "name": "Driver Booster 11",
+   "publisher": "IObit",
+   "version": "11.2",
+   "uninstall": "quiet"
+  },
+  {
+   "name": "Google Chrome",
+   "publisher": "Google LLC",
+   "version": "131",
+   "uninstall": "interactive"
+  },
+  {
+   "name": "Microsoft Visual C++ 2015-2022 Redistributable (x64)",
+   "publisher": "Microsoft",
+   "version": "14.40",
+   "uninstall": "quiet"
+  }
+ ],
+ "events": {
+  "errorsLast7Days": 412,
+  "unexpectedShutdowns30d": 3,
+  "bluescreens30d": 1,
+  "diskErrors30d": 0,
+  "appCrashes30d": [
+   "chrome.exe x4"
+  ]
+ },
+ "security": {
+  "antivirusProducts": [
+   "McAfee LiveSafe",
+   "Windows Defender"
+  ],
+  "realTime": false,
+  "recentThreats": []
+ },
+ "updates": {
+  "rebootPending": true,
+  "lastUpdateInstalled": "2026-08-01T10:00:00",
+  "daysSinceLastUpdate": 114,
+  "wingetAvailable": true
+ },
+ "problemDevices": [],
+ "battery": {
+  "healthPct": 71
+ },
+ "bootPerformance": {
+  "recentBoots": [
+   {
+    "when": "2026-11-23T08:00:00",
+    "bootSec": 142.3,
+    "toDesktopSec": 61.2,
+    "afterLoginSec": 81.1
+   }
+  ],
+  "slowdowns": [
+   {
+    "kind": "app",
+    "name": "McAfee Security",
+    "worstDelaySec": 38.2,
+    "times": 5
+   },
+   {
+    "kind": "service",
+    "name": "Driver Booster Service",
+    "worstDelaySec": 12.1,
+    "times": 3
+   }
+  ]
+ },
+ "crashes": {
+  "bugchecks90d": [
+   {
+    "when": "2026-11-02T21:14:00",
+    "code": "0x1A",
+    "dump": "C:\\Windows\\Minidump\\110226-1.dmp"
+   },
+   {
+    "when": "2026-10-20T11:00:00",
+    "code": "0x7A"
+   }
+  ],
+  "minidumps": [
+   "110226-1.dmp"
+  ],
+  "hardwareErrors90d": 0
+ },
+ "performance": {
+  "cpuNowPct": 72,
+  "topCpu": [
+   "McAfee 31.2%",
+   "OneDrive 8%"
+  ],
+  "availableMB": 610,
+  "committedPct": 91,
+  "pagesPerSec": 350,
+  "thermalZonesC": [
+   78
+  ]
+ },
+ "memoryTest": null,
+ "browsersAndNetwork": {
+  "extensions": [
+   {
+    "browser": "chrome",
+    "user": "anne",
+    "profile": "Default",
+    "id": "abc",
+    "name": "Easy PDF Converter Search"
+   },
+   {
+    "browser": "chrome",
+    "user": "anne",
+    "profile": "Default",
+    "id": "def",
+    "name": "uBlock Origin"
+   }
+  ],
+  "browserSettings": [
+   {
+    "browser": "chrome",
+    "user": "anne",
+    "profile": "Default",
+    "searchUrl": "https://search.yahoo-redirect.xyz/q={searchTerms}",
+    "homepage": "",
+    "startupUrls": ""
+   }
+  ],
+  "browserPolicies": [
+   {
+    "key": "HKLM:\\SOFTWARE\\Policies\\Google\\Chrome",
+    "values": [],
+    "subkeys": [
+     "ExtensionInstallForcelist"
+    ],
+    "forcedExtensions": [
+     "abc;https://evil.example/update.xml"
+    ],
+    "homepage": null,
+    "searchUrl": null
+   }
+  ],
+  "proxy": {
+   "enabled": 1,
+   "server": "127.0.0.1:8877",
+   "autoConfigUrl": null,
+   "winhttp": "Direct access (no proxy server)."
+  },
+  "dns": [
+   {
+    "adapter": "Wi-Fi",
+    "servers": [
+     "185.228.168.10",
+     "192.168.1.1"
+    ],
+    "manual": true
+   }
+  ],
+  "hostsEntries": [
+   "0.0.0.0 www.malwarebytes.com",
+   "0.0.0.0 www.eset.com"
+  ],
+  "hostsEntryCount": 2
+ }
+}

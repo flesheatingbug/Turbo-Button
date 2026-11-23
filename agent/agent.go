@@ -26,7 +26,7 @@ var scriptFS embed.FS
 //go:embed web/index.html
 var indexHTML []byte
 
-const Version = "0.2.2"
+const Version = "0.3.0"
 
 type Job struct {
 	ID       int             `json:"id"`
@@ -44,6 +44,14 @@ type Job struct {
 	Auto     bool            `json:"auto,omitempty"` // queued by the agent itself
 	env      map[string]string
 	modifies bool
+	timeout  time.Duration
+}
+
+// Event is what the console log (and anything else) sees as jobs progress.
+type Event struct {
+	Kind string // queued start line done failed phone
+	Job  *Job
+	Text string
 }
 
 type Agent struct {
@@ -64,6 +72,13 @@ type Agent struct {
 	lastSeen     time.Time
 	started      time.Time
 	phoneSeen    bool
+	OnEvent      func(Event)
+}
+
+func (a *Agent) emit(e Event) {
+	if a.OnEvent != nil {
+		a.OnEvent(e)
+	}
 }
 
 func NewAgent() (*Agent, error) {
@@ -94,6 +109,7 @@ func (a *Agent) enqueue(actionID string, params map[string]any, reason string, a
 	title := "Scan this PC"
 	env := map[string]string{}
 	modifies := false
+	timeout := 15 * time.Minute
 	if actionID != "scan" {
 		act := findAction(actionID)
 		if act == nil {
@@ -110,6 +126,10 @@ func (a *Agent) enqueue(actionID string, params map[string]any, reason string, a
 			env["PCM_"+k] = v
 		}
 		title, modifies = act.Title, act.Modifies
+		timeout = time.Duration(act.TimeoutMin) * time.Minute
+		if timeout == 0 {
+			timeout = 30 * time.Minute
+		}
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -118,9 +138,10 @@ func (a *Agent) enqueue(actionID string, params map[string]any, reason string, a
 	}
 	a.nextID++
 	j := &Job{ID: a.nextID, Action: actionID, Title: title, Params: params, Reason: reason, Status: "queued",
-		Queued: time.Now(), env: env, modifies: modifies, Auto: auto}
+		Queued: time.Now(), env: env, modifies: modifies, Auto: auto, timeout: timeout}
 	a.jobs = append(a.jobs, j)
 	a.queue <- j
+	go a.emit(Event{Kind: "queued", Job: j})
 	return j, nil
 }
 
@@ -146,7 +167,7 @@ func (a *Agent) worker() {
 			a.mu.Lock()
 			a.nextID++
 			rp := &Job{ID: a.nextID, Action: "restore_point", Title: findAction("restore_point").Title, Params: map[string]any{},
-				Reason: "Automatic safety restore point before the first change", Status: "queued", Queued: time.Now(), Auto: true, env: map[string]string{}}
+				Reason: "Automatic safety restore point before the first change", Status: "queued", Queued: time.Now(), Auto: true, env: map[string]string{}, timeout: 15 * time.Minute}
 			// keep it listed before the job that triggered it
 			for i, x := range a.jobs {
 				if x == j {
@@ -171,25 +192,30 @@ func (a *Agent) run(j *Job) {
 	a.mu.Lock()
 	j.Status, j.Started = "running", &now
 	a.mu.Unlock()
+	a.emit(Event{Kind: "start", Job: j})
 
 	name := j.Action
-	res, err := a.runScript(name, j.env, func(line string) {
+	res, err := a.runScript(name, j.env, j.timeout, func(line string) {
 		a.mu.Lock()
 		j.Output += line + "\n"
-		if len(j.Output) > 6000 {
-			j.Output = j.Output[len(j.Output)-6000:]
+		if len(j.Output) > 12000 {
+			j.Output = j.Output[len(j.Output)-12000:]
 		}
 		a.mu.Unlock()
+		a.emit(Event{Kind: "line", Job: j, Text: line})
 	})
 	end := time.Now()
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	j.Finished = &end
 	if err != nil {
 		j.Status, j.Error = "failed", err.Error()
+		a.mu.Unlock()
+		a.emit(Event{Kind: "failed", Job: j, Text: err.Error()})
 		return
 	}
 	j.Status, j.Result = "done", res
+	defer a.emit(Event{Kind: "done", Job: j})
+	defer a.mu.Unlock()
 	if name == "scan" {
 		a.lastScan = res
 		if a.firstScan == nil {
@@ -198,7 +224,7 @@ func (a *Agent) run(j *Job) {
 	}
 }
 
-func (a *Agent) runScript(name string, env map[string]string, onLine func(string)) (json.RawMessage, error) {
+func (a *Agent) runScript(name string, env map[string]string, timeout time.Duration, onLine func(string)) (json.RawMessage, error) {
 	prelude, _ := scriptFS.ReadFile("scripts/_prelude.ps1")
 	body, err := scriptFS.ReadFile("scripts/" + name + ".ps1")
 	if err != nil {
@@ -217,7 +243,9 @@ func (a *Agent) runScript(name string, env map[string]string, onLine func(string
 	}
 	defer os.Remove(path)
 
-	cmd := exec.CommandContext(a.ctx, powershellPath(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path)
+	ctx, cancel := context.WithTimeout(a.ctx, timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, powershellPath(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path)
 	cmd.Env = os.Environ()
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
@@ -244,6 +272,9 @@ func (a *Agent) runScript(name string, env map[string]string, onLine func(string
 		}
 	}
 	werr := cmd.Wait()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, fmt.Errorf("stopped after %v (time limit)", timeout)
+	}
 	if scriptErr != "" {
 		return nil, errors.New(scriptErr)
 	}
@@ -269,8 +300,12 @@ func (a *Agent) authed(h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		a.mu.Lock()
+		first := !a.phoneSeen
 		a.lastSeen, a.phoneSeen = time.Now(), true
 		a.mu.Unlock()
+		if first {
+			a.emit(Event{Kind: "phone"})
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		h(w, r)
@@ -390,3 +425,5 @@ func protectedServiceList() []string {
 	}
 	return out
 }
+
+func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }

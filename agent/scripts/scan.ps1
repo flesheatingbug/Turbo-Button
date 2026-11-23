@@ -23,6 +23,7 @@ Section 'system' {
     ramGB = GB $cs.TotalPhysicalMemory; freeRamGB = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
     isLaptop = [bool](Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue)
     signedInUser = $cs.UserName; agentRunningAs = "$env:USERDOMAIN\$env:USERNAME"
+    partOfDomain = [bool]$cs.PartOfDomain; domain = if ($cs.PartOfDomain) { $cs.Domain } else { $null }
   }
 }
 
@@ -120,7 +121,8 @@ Section 'programs' {
   $keys = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
   @(Get-ItemProperty $keys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -and $_.SystemComponent -ne 1 -and -not $_.ParentKeyName } |
     Sort-Object DisplayName -Unique | ForEach-Object {
-      [ordered]@{ name = $_.DisplayName; publisher = $_.Publisher; version = $_.DisplayVersion; installed = $_.InstallDate; sizeMB = if ($_.EstimatedSize) { [math]::Round($_.EstimatedSize / 1024) } else { $null } }
+      $how = if ($_.QuietUninstallString) { 'quiet' } elseif ("$($_.UninstallString)" -match 'msiexec') { 'msi' } elseif ($_.UninstallString) { 'interactive' } else { 'none' }
+      [ordered]@{ name = $_.DisplayName; publisher = $_.Publisher; version = $_.DisplayVersion; installed = $_.InstallDate; sizeMB = if ($_.EstimatedSize) { [math]::Round($_.EstimatedSize / 1024) } else { $null }; uninstall = $how }
     })
 }
 
@@ -156,7 +158,11 @@ Section 'security' {
 Section 'updates' {
   $cbs = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'
   $wu = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'
+  $last = $null; try { $last = (New-Object -ComObject Microsoft.Update.AutoUpdate).Results.LastInstallationSuccessDate } catch {}
   [ordered]@{ rebootPending = ($cbs -or $wu)
+    lastUpdateInstalled = if ($last -and $last.Year -gt 2000) { $last.ToString('s') } else { $null }
+    daysSinceLastUpdate = if ($last -and $last.Year -gt 2000) { [math]::Round(((Get-Date) - $last).TotalDays) } else { $null }
+    wingetAvailable = [bool](Get-Winget)
     recentHotfixes = @(Get-HotFix -ErrorAction SilentlyContinue | Where-Object { $_.InstalledOn } | Sort-Object InstalledOn -Descending | Select-Object -First 5 | ForEach-Object { "$($_.HotFixID) $($_.InstalledOn.ToString('yyyy-MM-dd'))" }) }
 }
 
@@ -200,6 +206,125 @@ Section 'privacy' {
     bingInStart = V 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search' 'BingSearchEnabled'
     lockscreenTips = V $cdm 'RotatingLockScreenOverlayEnabled'
   }
+}
+
+function EvData($e) { $d = @{}; foreach ($n in ([xml]$e.ToXml()).Event.EventData.Data) { $d[$n.Name] = $n.'#text' }; $d }
+
+Section 'bootPerformance' {
+  $log = 'Microsoft-Windows-Diagnostics-Performance/Operational'
+  $boots = @(Get-WinEvent -FilterHashtable @{ LogName = $log; Id = 100 } -MaxEvents 5 -ErrorAction SilentlyContinue | ForEach-Object {
+    $d = EvData $_
+    [ordered]@{ when = $_.TimeCreated.ToString('s'); bootSec = [math]::Round([double]$d['BootTime'] / 1000, 1)
+      toDesktopSec = [math]::Round([double]$d['MainPathBootTime'] / 1000, 1); afterLoginSec = [math]::Round([double]$d['BootPostBootTime'] / 1000, 1) } })
+  $kinds = @{ 101 = 'app'; 102 = 'driver'; 103 = 'service'; 106 = 'background task'; 109 = 'device' }
+  $slow = @(Get-WinEvent -FilterHashtable @{ LogName = $log; Id = 101, 102, 103, 106, 109 } -MaxEvents 300 -ErrorAction SilentlyContinue | ForEach-Object {
+    $d = EvData $_
+    $name = @($d['FriendlyName'], $d['Name'], $d['FileName']) | Where-Object { $_ } | Select-Object -First 1
+    [pscustomobject]@{ kind = $kinds[$_.Id]; name = "$name"; delayMs = [double]$d['DegradationTime'] } } |
+    Where-Object { $_.name } | Group-Object kind, name | ForEach-Object {
+      [ordered]@{ kind = $_.Group[0].kind; name = $_.Group[0].name; worstDelaySec = [math]::Round(($_.Group | Measure-Object delayMs -Maximum).Maximum / 1000, 1); times = $_.Count } } |
+    Sort-Object { $_.worstDelaySec } -Descending | Select-Object -First 10)
+  [ordered]@{ recentBoots = $boots; slowdowns = $slow }
+}
+
+Section 'crashes' {
+  $since = (Get-Date).AddDays(-90)
+  $bc = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-WER-SystemErrorReporting'; Id = 1001; StartTime = $since } -MaxEvents 30 -ErrorAction SilentlyContinue | ForEach-Object {
+    $txt = "$($_.Properties[0].Value) $($_.Message)"
+    $m = [regex]::Match($txt, '0x([0-9a-fA-F]{8,16})')
+    $code = if ($m.Success) { '0x' + ($m.Groups[1].Value.TrimStart('0')).ToUpper() } else { $null }
+    if ($code -eq '0x') { $code = '0x0' }
+    [ordered]@{ when = $_.TimeCreated.ToString('s'); code = $code; dump = ([regex]::Match($txt, '[A-Za-z]:\\[^\s"]+\.dmp')).Value } })
+  $dumps = @(Get-ChildItem "$env:windir\Minidump" -Filter *.dmp -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 10 | ForEach-Object { "$($_.Name) $($_.LastWriteTime.ToString('s'))" })
+  $whea = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-WHEA-Logger'; StartTime = $since } -MaxEvents 50 -ErrorAction SilentlyContinue).Count
+  [ordered]@{ bugchecks90d = $bc; minidumps = $dumps; hardwareErrors90d = $whea }
+}
+
+Section 'performance' {
+  $cores = [Environment]::ProcessorCount
+  $t1 = @{}; foreach ($p in Get-Process) { try { $t1[$p.Id] = $p.TotalProcessorTime.TotalMilliseconds } catch {} }
+  $sw = [Diagnostics.Stopwatch]::StartNew(); $samples = @()
+  for ($i = 0; $i -lt 3; $i++) { $samples += [double](Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'").PercentProcessorTime; Start-Sleep -Milliseconds 900 }
+  $el = $sw.Elapsed.TotalMilliseconds
+  $top = @(Get-Process | ForEach-Object { $a = $t1[$_.Id]; if ($null -ne $a) { try { [pscustomobject]@{ name = $_.ProcessName; pct = [math]::Round(100 * ($_.TotalProcessorTime.TotalMilliseconds - $a) / ($el * $cores), 1) } } catch {} } } |
+    Where-Object { $_.pct -ge 1 } | Sort-Object pct -Descending | Select-Object -First 6 | ForEach-Object { "$($_.name) $($_.pct)%" })
+  $m = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory
+  $temps = @(Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue | ForEach-Object { [math]::Round($_.CurrentTemperature / 10 - 273.15) } | Where-Object { $_ -gt 0 -and $_ -lt 120 })
+  [ordered]@{ cpuNowPct = [math]::Round(($samples | Measure-Object -Average).Average); topCpu = $top
+    availableMB = $m.AvailableMBytes; committedPct = $m.PercentCommittedBytesInUse; pagesPerSec = $m.PagesPerSec; thermalZonesC = $temps }
+}
+
+Section 'memoryTest' {
+  $e = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-MemoryDiagnostics-Results' } -MaxEvents 1 -ErrorAction SilentlyContinue
+  if ($e) { [ordered]@{ when = $e.TimeCreated.ToString('s'); id = $e.Id; message = Short $e.Message 200 } } else { $null }
+}
+
+Section 'browsersAndNetwork' {
+  $roots = [ordered]@{ chrome = 'Google\Chrome\User Data'; edge = 'Microsoft\Edge\User Data'; brave = 'BraveSoftware\Brave-Browser\User Data' }
+  $exts = @(); $settings = @()
+  foreach ($u in @(Get-ChildItem 'C:\Users' -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -notin 'Public', 'Default', 'Default User', 'All Users' })) {
+    foreach ($b in $roots.Keys) {
+      $root = Join-Path $u.FullName ('AppData\Local\' + $roots[$b])
+      if (-not (Test-Path $root)) { continue }
+      foreach ($prof in @(Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'Default' -or $_.Name -like 'Profile *' })) {
+        foreach ($e in @(Get-ChildItem (Join-Path $prof.FullName 'Extensions') -Directory -ErrorAction SilentlyContinue)) {
+          $ver = Get-ChildItem $e.FullName -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $ver) { continue }
+          $name = $null
+          try {
+            $j = Get-Content (Join-Path $ver.FullName 'manifest.json') -Raw -ErrorAction Stop | ConvertFrom-Json
+            $name = $j.name
+            if ("$name" -like '__MSG_*') {
+              $key = "$name" -replace '^__MSG_(.+)__$', '$1'
+              foreach ($loc in @($j.default_locale, 'en', 'en_US') | Where-Object { $_ }) {
+                $mp = Join-Path $ver.FullName "_locales\$loc\messages.json"
+                if (Test-Path $mp) { $msgs = Get-Content $mp -Raw | ConvertFrom-Json; $pr = $msgs.PSObject.Properties | Where-Object { $_.Name -ieq $key } | Select-Object -First 1; if ($pr) { $name = $pr.Value.message; break } }
+              }
+            }
+          } catch {}
+          if ($name) { $exts += [ordered]@{ browser = $b; user = $u.Name; profile = $prof.Name; id = $e.Name; name = Short $name 80 } }
+        }
+        $pf = Join-Path $prof.FullName 'Preferences'
+        if (Test-Path $pf) {
+          $raw = Get-Content $pf -Raw -ErrorAction SilentlyContinue
+          $search = ([regex]::Match("$raw", '"default_search_provider_data"\s*:\s*\{\s*"template_url_data"\s*:\s*\{[^}]*?"url"\s*:\s*"([^"]+)"')).Groups[1].Value
+          $hpage = ([regex]::Match("$raw", '"homepage"\s*:\s*"([^"]*)"')).Groups[1].Value
+          $start = ([regex]::Match("$raw", '"startup_urls"\s*:\s*\[([^\]]*)\]')).Groups[1].Value
+          if ($search -or $hpage -or $start) { $settings += [ordered]@{ browser = $b; user = $u.Name; profile = $prof.Name; searchUrl = $search; homepage = $hpage; startupUrls = Short $start 200 } }
+        }
+      }
+    }
+    $ffp = Join-Path $u.FullName 'AppData\Roaming\Mozilla\Firefox\Profiles'
+    foreach ($prof in @(Get-ChildItem $ffp -Directory -ErrorAction SilentlyContinue)) {
+      try {
+        $j = Get-Content (Join-Path $prof.FullName 'extensions.json') -Raw -ErrorAction Stop | ConvertFrom-Json
+        foreach ($a in @($j.addons | Where-Object { $_.location -eq 'app-profile' -and $_.type -eq 'extension' })) {
+          $exts += [ordered]@{ browser = 'firefox'; user = $u.Name; profile = $prof.Name; id = $a.id; name = Short $a.defaultLocale.name 80; active = $a.active }
+        }
+      } catch {}
+    }
+  }
+  $pol = @()
+  foreach ($k in 'HKLM:\SOFTWARE\Policies\Google\Chrome', 'HKCU:\SOFTWARE\Policies\Google\Chrome', 'HKLM:\SOFTWARE\Policies\Microsoft\Edge', 'HKCU:\SOFTWARE\Policies\Microsoft\Edge', 'HKLM:\SOFTWARE\Policies\BraveSoftware\Brave', 'HKCU:\SOFTWARE\Policies\BraveSoftware\Brave') {
+    if (-not (Test-Path $k)) { continue }
+    $vals = @((Get-Item $k).GetValueNames()) ; $subs = @(Get-ChildItem $k -ErrorAction SilentlyContinue | ForEach-Object { $_.PSChildName })
+    $forced = @(); $fk = Join-Path $k 'ExtensionInstallForcelist'
+    if (Test-Path $fk) { $it = Get-Item $fk; $forced = @($it.GetValueNames() | ForEach-Object { Short $it.GetValue($_) 120 }) }
+    $p = Get-ItemProperty $k -ErrorAction SilentlyContinue
+    $pol += [ordered]@{ key = $k; values = $vals; subkeys = $subs; forcedExtensions = $forced; homepage = $p.HomepageLocation; searchUrl = $p.DefaultSearchProviderSearchURL }
+  }
+  $is = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -ErrorAction SilentlyContinue
+  $winhttp = ((& netsh.exe winhttp show proxy 2>$null) | Where-Object { "$_".Trim() }) -join ' '
+  $dns = @()
+  foreach ($a in @(Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up')) {
+    $srv = (Get-DnsClientServerAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses
+    $static = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\$($a.InterfaceGuid)" -ErrorAction SilentlyContinue).NameServer
+    $dns += [ordered]@{ adapter = $a.Name; servers = @($srv); manual = [bool]$static }
+  }
+  $hosts = @(Get-Content "$env:windir\System32\drivers\etc\hosts" -ErrorAction SilentlyContinue | Where-Object { $_.Trim() -and -not $_.Trim().StartsWith('#') } | ForEach-Object { ($_ -replace '\s+', ' ').Trim() })
+  [ordered]@{ extensions = $exts; browserSettings = $settings; browserPolicies = $pol
+    proxy = [ordered]@{ enabled = $is.ProxyEnable; server = $is.ProxyServer; autoConfigUrl = $is.AutoConfigURL; winhttp = Short $winhttp 160 }
+    dns = $dns; hostsEntries = @($hosts | Select-Object -First 40); hostsEntryCount = $hosts.Count }
 }
 
 Out-Result $r

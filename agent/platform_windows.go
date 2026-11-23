@@ -19,10 +19,18 @@ var (
 
 const fwRule = "Turbo Button temporary session"
 
-func setupConsole() {
+// setupConsole switches the console to UTF-8 and turns on colour (VT) output; returns whether colour works.
+func setupConsole() bool {
 	kernel32.NewProc("SetConsoleOutputCP").Call(65001)
 	t, _ := syscall.UTF16PtrFromString("Turbo Button")
 	kernel32.NewProc("SetConsoleTitleW").Call(uintptr(unsafe.Pointer(t)))
+	h, _, _ := kernel32.NewProc("GetStdHandle").Call(uintptr(0xFFFFFFF5)) // STD_OUTPUT_HANDLE (-11)
+	var mode uint32
+	if r, _, _ := kernel32.NewProc("GetConsoleMode").Call(h, uintptr(unsafe.Pointer(&mode))); r == 0 {
+		return false
+	}
+	r, _, _ := kernel32.NewProc("SetConsoleMode").Call(h, uintptr(mode|0x0004)) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
+	return r != 0
 }
 
 func isAdmin() bool {
