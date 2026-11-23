@@ -106,6 +106,10 @@
   #boot { position:fixed; inset:0; z-index:70; background:var(--bg); color:var(--text); padding:28px 20px; font:15px/1.7 "Cascadia Mono","Consolas","Roboto Mono",ui-monospace,monospace;
     white-space:pre-wrap; text-shadow:0 0 6px currentColor; }
 
+  .sdesc { font-size:13px; color:var(--text); opacity:.85; margin-top:2px; line-height:1.35; }
+  .badge.tag { background:transparent; border:1px solid; font-size:10px; letter-spacing:.05em; white-space:nowrap; vertical-align:2px; }
+  .tag.adv-keep { color:var(--ok); border-color:var(--ok); } .tag.adv-optional { color:var(--mut); border-color:var(--mut); }
+  .tag.adv-safe { color:var(--warn); border-color:var(--warn); } .tag.adv-check { color:var(--bad); border-color:var(--bad); }
   #dlg { position:fixed; inset:0; z-index:75; display:none; align-items:center; justify-content:center; padding:18px; background:rgba(0,0,0,.62); backdrop-filter:blur(2px); }
   #dlg.on { display:flex; animation:dlgIn .16s ease-out; }
   #dlg .box { width:100%; max-width:440px; background:var(--card, #121a23); border:1px solid var(--line); border-radius:14px; padding:18px 18px 14px; box-shadow:0 18px 60px rgba(0,0,0,.6); }
@@ -303,7 +307,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.9.5";
+const PAGE_VERSION = "0.9.6";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -591,8 +595,12 @@ function renderScan() {
   const failed = (s.services || []).filter(x => x.failed);
   if (isLinux() && failed.length) html += `<div class="card"><h2>Failed services (${failed.length})</h2><div class="list">` + failed.map(x =>
     `<div class="li"><div class="t">${esc(x.name)}<div class="params">${esc(x.displayName || "")}</div></div><button class="b2 sm" data-rs="${esc(x.name)}">Restart</button></div>`).join("") + `</div></div>`;
-  html += `<div class="card"><h2>Startup apps (${st.filter(x => x.enabled).length} enabled)</h2><div class="list">` + st.map((x, i) =>
-    `<div class="li"><div class="t">${esc(x.name)}<div class="params">${esc(x.location)} · ${esc(x.command)}</div></div>${x.enabled ? `<button class="b2 sm" data-st="${i}">Disable</button>` : '<span class="mut">off</span>'}</div>`).join("") + `</div></div>`;
+  const order = { check: 0, safe: 1, optional: 2, "": 3, keep: 4 };
+  const stI = st.map((x, i) => ({ x, i, info: startupInfo(x) })).sort((a, b) => (b.x.enabled - a.x.enabled) || (order[a.info.advice] - order[b.info.advice]));
+  html += `<div class="card"><h2>Startup apps (${st.filter(x => x.enabled).length} enabled)</h2><div class="mut" style="margin:-4px 0 6px">What each one does, and whether it's needed. Disabling only stops it starting automatically.</div><div class="list">` + stI.map(({ x, i, info }) =>
+    `<div class="li"><div class="t">${esc(x.name)}${info.advice ? ` <span class="badge tag adv-${info.advice}" title="${esc(ADVICE[info.advice][1])}">${ADVICE[info.advice][0]}</span>` : ""}` +
+    (info.desc ? `<div class="sdesc">${esc(info.desc)}</div>` : "") + (info.own ? `<div class="params">${esc(info.own)}</div>` : "") +
+    `<div class="params">${esc(x.location)} · ${esc(x.command)}</div></div>${x.enabled ? `<button class="b2 sm" data-st="${i}">Disable</button>` : '<span class="mut">off</span>'}</div>`).join("") + `</div></div>`;
   const apps = (s.apps || []).slice().sort((a, b) => (b.likelyBloat - a.likelyBloat) || a.name.localeCompare(b.name));
   if (isLinux()) html += `<div class="card"><details><summary>Flatpak / Snap apps (${apps.length})</summary><div class="list">` + apps.map(x => `<div class="li"><div class="t">${esc(x.name)}<div class="params">${esc(x.kind)} ${esc(x.version || "")}</div></div></div>`).join("") + `</div></details></div>`;
   else html += `<div class="card"><details><summary>Store apps (${apps.filter(a => a.likelyBloat).length} likely bloat of ${apps.length})</summary><div class="list">` + apps.map((x, i) =>
@@ -603,7 +611,8 @@ function renderScan() {
   $("scanView").innerHTML = html;
   $("scanView").querySelectorAll("[data-st]").forEach(b => b.onclick = async () => {
     const x = st[+b.dataset.st];
-    if (!await ask({ title: "Disable this startup app?", facts: [x.name], note: "It stops launching when the PC starts. The app itself still works when opened.", ok: "Disable" })) return;
+    const inf = startupInfo(x);
+    if (!await ask({ title: "Disable this startup app?", facts: [x.name].concat(inf.desc ? [inf.desc] : []), note: inf.advice === "keep" ? "This looks like part of the system or a driver. Turning it off may break something (sound, touchpad, tray, passwords…). Only disable it if you're sure." : "It stops launching when the PC starts. The app itself still works when opened.", ok: "Disable", danger: inf.advice === "keep" })) return;
     try { await (isLinux() ? queue("autostart_disable", { path: x.path }, "Disabled manually from scan") : queue("startup_disable", { location: x.location, name: x.name }, "Disabled manually from scan")); toast("Queued"); } catch (e) { toast(e.message); }
   });
   $("scanView").querySelectorAll("[data-rs]").forEach(b => b.onclick = async () => {
@@ -613,6 +622,84 @@ function renderScan() {
     if (!await ask({ title: "Remove this app?", facts: [b.dataset.app], note: "Removed for every user on this PC.", ok: "Remove", danger: true })) return;
     try { await queue("app_remove", { name: b.dataset.app }, "Removed manually from scan"); toast("Queued"); } catch (e) { toast(e.message); }
   });
+}
+
+// ---------- what startup items are, and whether they're needed ----------
+// [pattern, plain-English description, advice: keep | optional | safe | check]
+const STARTUP_INFO = [
+  // remote access: scammers install these, so always worth asking about
+  [/rustdesk/i, "RustDesk remote desktop: lets someone connect to and control this PC remotely.", "check"],
+  [/anydesk/i, "AnyDesk remote desktop: lets someone connect to and control this PC remotely.", "check"],
+  [/teamviewer/i, "TeamViewer remote control: lets someone connect to this PC remotely.", "check"],
+  [/ultraviewer|screenconnect|connectwise|supremo|splashtop|remotepc|getscreen|zohoassist|logmein|ammyy|aeroadmin|hoptodesk/i, "Remote-access tool: lets someone connect to and control this PC remotely.", "check"],
+  // Linux desktop plumbing
+  [/powerdevil/i, "KDE power management: screen dimming, sleep, battery and brightness keys.", "keep"],
+  [/xdg-user-dirs/i, "Sets up the standard folders (Documents, Downloads, Music…). Runs once at login.", "keep"],
+  [/xembedsniproxy/i, "Shows tray icons for older apps in the KDE panel.", "keep"],
+  [/gmenudbusmenuproxy/i, "Lets GTK apps use KDE's global menu.", "keep"],
+  [/polkit|authentication.agent/i, "Shows the password prompt when something needs admin rights.", "keep"],
+  [/kwallet|keyring|ssh-agent|gpg-agent|seahorse/i, "Stores saved passwords and keys (Wi-Fi, browsers, SSH).", "keep"],
+  [/pipewire|pulseaudio|wireplumber/i, "Sound system.", "keep"],
+  [/at-spi|kaccess|orca/i, "Accessibility support (screen readers, sticky keys).", "keep"],
+  [/ibus|fcitx/i, "Keyboard input methods (other languages, emoji).", "keep"],
+  [/nm-applet|networkmanager|plasma-nm/i, "Network/Wi-Fi icon in the tray.", "keep"],
+  [/blueman|bluedevil/i, "Bluetooth tray and pairing.", "keep"],
+  [/xdg-desktop-portal|snap-userd|spice-vdagent|vmware-user|vboxclient/i, "Desktop integration service.", "keep"],
+  [/nvidia-settings/i, "Applies saved NVIDIA graphics settings at login.", "keep"],
+  [/touchegg|libinput-gestures/i, "Touchpad gestures.", "keep"],
+  [/picom|compton/i, "Window effects and tear-free drawing.", "keep"],
+  [/deja-dup|timeshift|backintime|vorta/i, "Backups: keeps the scheduled backup running.", "keep"],
+  [/baloo/i, "KDE file indexer for desktop search. Uses disk while indexing; can be turned off if search isn't used.", "optional"],
+  [/tracker-miner|localsearch/i, "GNOME file indexer for search. Can be turned off if search isn't used.", "optional"],
+  [/kdeconnect/i, "KDE Connect: links a phone (notifications, file sharing).", "optional"],
+  [/klipper/i, "Clipboard history.", "optional"],
+  [/korgac|kalendarac|evolution-alarm/i, "Calendar reminders.", "optional"],
+  [/geoclue/i, "Location service for apps (weather, night light).", "optional"],
+  [/print-applet|system-config-printer/i, "Printer status in the tray.", "optional"],
+  [/update-notifier|discover.*notifier|org\.kde\.discover|gnome-software|mintupdate|pamac-tray|octopi|ubuntu-advantage-notification/i, "Update notifications. Turning it off means the customer isn't told about updates.", "optional"],
+  [/cachyos-hello|welcome|plasma-welcome|gnome-initial-setup|mintwelcome|manjaro-hello|garuda-welcome/i, "The distro's welcome screen at login.", "safe"],
+  [/zeitgeist/i, "Activity logging for recent-files features. Rarely needed.", "safe"],
+  [/solaar/i, "Logitech mouse/keyboard manager.", "optional"],
+  [/corectrl|openrgb|coolercontrol|piper/i, "Hardware control (fans, RGB, GPU, mouse).", "optional"],
+  [/redshift|gammastep/i, "Night light: warmer screen colours in the evening.", "optional"],
+  [/flameshot|copyq|ulauncher|albert|conky|variety|caffeine/i, "Desktop utility the customer chose to install.", "optional"],
+  // sync and cloud
+  [/opencloud|owncloud|nextcloud|seafile|syncthing|megasync|insync|pcloud/i, "File sync: keeps files in step with the customer's cloud or server.", "optional"],
+  [/onedrive/i, "OneDrive file sync.", "optional"],
+  [/dropbox/i, "Dropbox file sync.", "optional"],
+  [/google ?drive|googledrivefs/i, "Google Drive file sync.", "optional"],
+  [/icloud/i, "iCloud sync.", "optional"],
+  // Windows
+  [/securityhealth/i, "Windows Security icon in the tray.", "keep"],
+  [/rtkaud|realtek|nahimic|waves|maxxaudio|dolby|sonic studio/i, "Audio driver panel and sound effects.", "keep"],
+  [/synaptics|elan|syntp|touchpad|precision touchpad/i, "Touchpad driver (gestures, palm rejection).", "keep"],
+  [/igfx|intel.*graphics|nvcontainer|nvidia|radeon|amd ?software|cncmd|raddxvk/i, "Graphics driver helper.", "keep"],
+  [/microsoftedgeautolaunch|edge.*autolaunch/i, "Pre-loads Microsoft Edge at login so it opens faster. Slows startup a little.", "safe"],
+  [/adobeaam|adobegc|adobe.*updater|acrotray|adobe arm|armsvc|ccxprocess|creative cloud/i, "Adobe updater/helper. Adobe apps still work and update when opened.", "safe"],
+  [/jusched|java.*update/i, "Java update checker.", "safe"],
+  [/itunes|applemobile|ipodservice/i, "Apple helper for iTunes and iPhone syncing.", "optional"],
+  [/ccleaner|webadvisor|driver ?booster|driver ?easy|advanced ?systemcare|pc ?(cleaner|optimizer|accelerate)|wise ?care|avast ?cleanup|iobit|reimage|restoro|outbyte/i, "\"Optimizer\"/trialware tray tool. Not needed.", "safe"],
+  [/spotify/i, "Spotify music.", "optional"], [/discord/i, "Discord chat.", "optional"], [/steam/i, "Steam games launcher.", "optional"],
+  [/epic ?games|eos|battle\.net|ubisoft|ea ?(app|desktop)|origin|gog ?galaxy/i, "Game launcher.", "optional"],
+  [/teams|skype|zoom|slack|whatsapp|telegram|signal|messenger/i, "Chat/meetings app.", "optional"],
+  [/lghub|logi|razer|synapse|icue|corsair|steelseries|armoury|asus/i, "Peripheral/RGB software (mice, keyboards, lighting).", "optional"],
+  [/lenovo ?vantage|supportassist|hp ?(support|smart|wolf|jumpstart)|myasus|dell ?(update|digital)|acer ?(care|jumpstart)|msi ?center/i, "PC maker's support/update tool.", "optional"],
+  [/wallpaper ?engine|lively/i, "Animated wallpaper. Uses CPU/GPU in the background.", "optional"],
+  [/cortana|bingsvc|msnews|widgets/i, "Microsoft news/search extras.", "safe"],
+];
+const ADVICE = { keep: ["KEEP", "Part of the system or a driver. Leave on."], optional: ["OPTIONAL", "Fine to turn off if the customer doesn't use it."], safe: ["SAFE TO DISABLE", "Not needed at startup."], check: ["CHECK", "Ask the customer whether they know about this."] };
+function startupInfo(x) {
+  const t = `${x.name} ${x.command || ""} ${x.path || ""}`;
+  const hit = STARTUP_INFO.find(([re]) => re.test(t));
+  const own = [x.description, x.publisher].filter(Boolean).join(" · ");
+  return { desc: hit ? hit[1] : own, own: hit && x.publisher ? x.publisher : "", advice: hit ? hit[2] : "" };
+}
+// systemd escapes names: dev-disk-by\x2dlabel-Downloads\x5cx20… → dev-disk-by-label-Downloads …
+const unescSystemd = (n) => { let s = String(n || ""); for (let i = 0; i < 2; i++) s = s.replace(/\\x([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16))); return s; };
+function niceUnit(n) {
+  const s = unescSystemd(n), m = s.match(/^dev-disk-by-(label|uuid|partuuid|id)-(.+)\.device$/);
+  if (m) return m[1] === "label" ? `drive "${m[2].replace(/\\/g, "")}"` : `a drive (${m[1]} ${m[2].slice(0, 12)}…)`;
+  return s.replace(/\\/g, "");
 }
 
 // ---------- diagnostics display ----------
@@ -651,7 +738,7 @@ function diagCards(s) {
   const bp = s.bootPerformance || {}, last = (bp.recentBoots || [])[0];
   if (last || (bp.slowdowns || []).length) {
     h += `<div class="card"><h2>Startup speed</h2><div class="kv">` + (last ? gbRow("Last boot", last.afterLoginSec != null ? `${last.bootSec}s (desktop after ${last.toDesktopSec}s, settled ${last.afterLoginSec}s later)` : `${last.bootSec}s${last.toDesktopSec ? " (desktop after " + last.toDesktopSec + "s)" : ""}`) : "") + `</div>`;
-    if ((bp.slowdowns || []).length) h += `<div class="mut" style="margin-top:6px">Slowing it down:</div>` + bp.slowdowns.slice(0, 6).map(x => `<div class="params">${esc(x.kind)} · ${esc(x.name)} · up to ${esc(x.worstDelaySec)}s</div>`).join("");
+    if ((bp.slowdowns || []).length) h += `<div class="mut" style="margin-top:6px">Slowing it down:</div>` + bp.slowdowns.slice(0, 6).map(x => `<div class="params">${esc(x.kind)} · ${esc(niceUnit(x.name))} · up to ${esc(x.worstDelaySec)}s</div>`).join("");
     h += `</div>`;
   }
   const cr = s.crashes || {};
@@ -888,6 +975,10 @@ const COMMON_APPS = /(spotify|discord|teams|skype|zoom|slack|steam|epic|origin|e
 const JUNK_APPS = /(BingNews|BingFinance|BingSports|BingSearch|GetHelp|Getstarted|MicrosoftOfficeHub|WindowsFeedbackHub|MixedReality|3DBuilder|Microsoft3DViewer|OneConnect|Messaging|Wallet|CandyCrush|king\.com|549981C3F5F10|PowerAutomateDesktop|DevHome)/i;
 const JUNK_PROGRAMS = /(mcafee|norton|webadvisor|driver ?booster|driver ?easy|driver ?support|advanced ?systemcare|pc ?cleaner|pc ?optimizer|reimage|restoro|segurazo|outbyte|wise ?care|toolbar|ask\.com|conduit|mywebsearch|bytefence|pc ?accelerate|systweak|iobit)/i;
 
+function remoteAccessFinding(s, find) {
+  const ra = (s.startup || []).filter(x => x.enabled && startupInfo(x).advice === "check");
+  if (ra.length) find("warn", "Remote-access software starts automatically", ra.map(x => x.name).join(", ") + " — ask the customer if they installed it and still use it. Scammers often leave these behind.");
+}
 function quickPlan(s) { return isLinux() ? quickPlanLinux(s) : quickPlanWin(s); }
 function quickPlanWin(s) {
   const P = [], F = [], M = [];
@@ -913,6 +1004,7 @@ function quickPlanWin(s) {
   if (c.windowsOldExists) M.push({ title: "Remove Windows.old", detail: "An old Windows installation is taking space. Remove it via Settings → System → Storage → Temporary files once the customer is happy with the current version." });
   if ((c.hiberfilGB || 0) > 8 && !sys.isLaptop) M.push({ title: "Consider turning hibernation off", detail: `hiberfil.sys uses ${c.hiberfilGB} GB on this desktop. Use the hibernation action if space is tight (also disables Fast Startup).` });
 
+  remoteAccessFinding(s, find);
   // Startup
   for (const x of (s.startup || []).filter(x => x.enabled)) {
     const t = x.name + " " + x.command;
@@ -1100,6 +1192,7 @@ function quickPlanLinux(s) {
   if (upd.flatpak) prop("flatpak_unused", {}, "Remove Flatpak runtimes no app uses.");
   if (root && root.freePct < 20 && !dr("disk_usage")) prop("disk_usage", {}, "Find what's filling the drive (read-only).");
 
+  remoteAccessFinding(s, find);
   // Autostart
   for (const x of (s.startup || []).filter(x => x.enabled)) {
     const t = x.name + " " + x.command + " " + x.path;

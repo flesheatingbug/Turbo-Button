@@ -65,6 +65,23 @@ Section 'startup' {
     if (Test-Path $p) { $k = Get-Item $p; foreach ($n in $k.GetValueNames()) { $v = $k.GetValue($n); if ($v -is [byte[]] -and $v.Length -gt 0) { $h[$n] = (($v[0] % 2) -eq 0) } } }
     $h
   }
+  # What the program says about itself (file description and company), for the technician.
+  $wsh = $null
+  function ExeInfo($cmd) {
+    try {
+      $path = "$cmd"
+      if ($path -like '*.lnk') {
+        if (-not $script:wsh) { $script:wsh = New-Object -ComObject WScript.Shell }
+        $path = $script:wsh.CreateShortcut($path).TargetPath
+      }
+      $m = [regex]::Match($path, '^\s*"([^"]+)"|^\s*(\S.*?\.exe)\b', 'IgnoreCase')
+      if ($m.Success) { $path = if ($m.Groups[1].Success) { $m.Groups[1].Value } else { $m.Groups[2].Value } }
+      $path = [Environment]::ExpandEnvironmentVariables($path)
+      if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return @{} }
+      $vi = (Get-Item -LiteralPath $path).VersionInfo
+      @{ description = Short "$($vi.FileDescription)".Trim() 120; publisher = Short "$($vi.CompanyName)".Trim() 80 }
+    } catch { @{} }
+  }
   $items = @()
   $regs = @(
     @{ loc = 'HKCU_Run'; key = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'; root = 'HKCU:'; sub = 'Run' },
@@ -75,7 +92,8 @@ Section 'startup' {
     $ap = Approved $g.root $g.sub; $k = Get-Item $g.key
     foreach ($n in $k.GetValueNames()) {
       if ($n -eq '') { continue }
-      $items += [ordered]@{ location = $g.loc; name = $n; command = Short $k.GetValue($n) 200; enabled = if ($ap.ContainsKey($n)) { $ap[$n] } else { $true } }
+      $cmd = $k.GetValue($n); $ei = ExeInfo $cmd
+      $items += [ordered]@{ location = $g.loc; name = $n; command = Short $cmd 200; description = $ei.description; publisher = $ei.publisher; enabled = if ($ap.ContainsKey($n)) { $ap[$n] } else { $true } }
     }
   }
   $folders = @(
@@ -85,7 +103,8 @@ Section 'startup' {
     if (-not (Test-Path $g.dir)) { continue }
     $ap = Approved $g.root 'StartupFolder'
     foreach ($f in @(Get-ChildItem $g.dir -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'desktop.ini' })) {
-      $items += [ordered]@{ location = $g.loc; name = $f.Name; command = $f.FullName; enabled = if ($ap.ContainsKey($f.Name)) { $ap[$f.Name] } else { $true } }
+      $ei = ExeInfo $f.FullName
+      $items += [ordered]@{ location = $g.loc; name = $f.Name; command = $f.FullName; description = $ei.description; publisher = $ei.publisher; enabled = if ($ap.ContainsKey($f.Name)) { $ap[$f.Name] } else { $true } }
     }
   }
   $items

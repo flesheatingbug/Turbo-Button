@@ -398,7 +398,7 @@ func oldFilesSize(root string, age time.Duration) int64 {
 	return sum
 }
 
-var reExecField = regexp.MustCompile(`(?m)^(Name|Exec|Hidden|X-GNOME-Autostart-enabled|OnlyShowIn|NotShowIn)=(.*)$`)
+var reExecField = regexp.MustCompile(`(?m)^(Name|GenericName|Comment|Exec|Hidden|X-GNOME-Autostart-enabled|OnlyShowIn|NotShowIn)=(.*)$`)
 
 func desktopEntry(p string) map[string]string {
 	m := map[string]string{}
@@ -435,7 +435,7 @@ func scanAutostart() any {
 				enabled = false
 			}
 		}
-		items = append(items, map[string]any{"location": "system autostart", "name": firstNonEmpty(e["Name"], filepath.Base(p)), "command": short(e["Exec"], 120), "path": p, "enabled": enabled})
+		items = append(items, map[string]any{"location": "system autostart", "name": firstNonEmpty(e["Name"], filepath.Base(p)), "description": short(firstNonEmpty(e["Comment"], e["GenericName"]), 160), "onlyIn": e["OnlyShowIn"], "command": short(e["Exec"], 120), "path": p, "enabled": enabled})
 	}
 	for _, u := range us {
 		ps, _ := filepath.Glob(filepath.Join(u.home, ".config/autostart/*.desktop"))
@@ -444,7 +444,7 @@ func scanAutostart() any {
 				continue // an override of a system entry, already shown
 			}
 			e := desktopEntry(p)
-			items = append(items, map[string]any{"location": "autostart (" + u.name + ")", "name": firstNonEmpty(e["Name"], filepath.Base(p)), "command": short(e["Exec"], 120), "path": p, "enabled": entryEnabled(e)})
+			items = append(items, map[string]any{"location": "autostart (" + u.name + ")", "name": firstNonEmpty(e["Name"], filepath.Base(p)), "description": short(firstNonEmpty(e["Comment"], e["GenericName"]), 160), "onlyIn": e["OnlyShowIn"], "command": short(e["Exec"], 120), "path": p, "enabled": entryEnabled(e)})
 		}
 	}
 	return items
