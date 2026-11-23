@@ -64,7 +64,7 @@ Connect as many PCs as you like: on the **PCs** tab, tap **Scan QR code** for ea
 
 ## Customer screen on the PC
 
-When the agent starts, it also opens a full-window **customer screen** in an app-style Edge (or Chrome) window. It uses the same retro terminal look as the app and shows the QR code until the phone connects, then what's being done and why (with a progress bar), completed fixes, space freed, elapsed time and a "please don't turn off" warning while work runs. It only accepts connections from the PC itself and is read-only. Closing it doesn't end the session; closing the console window does. Start the agent with `--no-screen` to skip it.
+When the agent starts, it also opens a full-window **customer screen** in an app-style Edge (or Chrome) window. It uses the same retro terminal look as the app and shows the QR code until the phone connects, then what's being done and why (with a progress bar), completed fixes, space freed, elapsed time and a "please don't turn off" warning while work runs. It only accepts connections from the PC itself and is read-only. The QR code stays on screen so the phone can reconnect, or another phone can add the PC. Once the screen is up, the console window hides itself. **Closing the screen ends the session** (Windows asks first if work is still running). The exception is while Turbo Button is restarting the PC: then it's ignored, so the session can resume. If neither Edge nor Chrome is installed, the console stays visible as before. Use `--no-screen` to skip the screen, or `--console` to keep the console visible.
 
 ## Look
 

@@ -188,3 +188,25 @@ func closeScreen(workDir string) {
 	hideWindow(c)
 	c.Run()
 }
+
+// hideConsole hides the console window if it belongs to us alone (not a terminal the user started us from).
+func hideConsole() bool {
+	h, _, _ := kernel32.NewProc("GetConsoleWindow").Call()
+	if h == 0 {
+		return false
+	}
+	var pids [4]uint32
+	n, _, _ := kernel32.NewProc("GetConsoleProcessList").Call(uintptr(unsafe.Pointer(&pids[0])), 4)
+	if n > 1 {
+		return false
+	}
+	user32 := syscall.NewLazyDLL("user32.dll")
+	user32.NewProc("ShowWindow").Call(h, 0) // SW_HIDE
+	return true
+}
+
+func showConsole() {
+	if h, _, _ := kernel32.NewProc("GetConsoleWindow").Call(); h != 0 {
+		syscall.NewLazyDLL("user32.dll").NewProc("ShowWindow").Call(h, 5) // SW_SHOW
+	}
+}

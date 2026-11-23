@@ -39,13 +39,13 @@
   .done-list div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .ok { color:var(--text); } .fail { color:var(--bad); text-shadow:0 0 6px rgba(255,91,74,.5); }
   .right { display:grid; grid-template-rows:auto auto 1fr; gap:14px; min-height:0; }
-  .qr { background:#fff; padding:10px; text-shadow:none; position:relative; z-index:22; }
+  .qr { background:#fff; padding:8px; text-shadow:none; position:relative; z-index:22; width:220px; margin:0 auto; }
   .qr svg { display:block; width:100%; height:auto; }
   .stat { display:flex; justify-content:space-between; margin:6px 0; }
   .stat b { color:var(--hi); font-size:20px; }
   .warn { border:1px solid var(--warn); color:var(--warn); text-shadow:0 0 6px rgba(255,201,51,.5); padding:10px 12px; text-align:center; letter-spacing:.08em; }
   .warn b { animation:blink 1.2s steps(1) infinite; }
-  .log { border-top:1px solid var(--line); padding-top:8px; font-size:13px; color:var(--mut); height:7.2em; overflow:hidden; white-space:pre; }
+  .log { border-top:1px solid var(--line); padding-top:8px; font-size:13px; color:var(--mut); height:6.4em; overflow:hidden; white-space:pre; }
   #boot { position:fixed; inset:0; z-index:30; background:var(--bg); padding:40px; font-size:18px; white-space:pre-wrap; color:var(--hi); }
   #end { position:fixed; inset:0; z-index:25; background:rgba(2,11,5,.95); display:none; align-items:center; justify-content:center; flex-direction:column; text-align:center; gap:10px; font-size:24px; color:var(--hi); }
 </style>
@@ -68,7 +68,7 @@
       <div class="panel" style="display:flex;flex-direction:column;min-height:0"><h2>Completed</h2><div class="done-list" id="done"><span class="mut">Nothing yet.</span></div></div>
     </div>
     <div class="right">
-      <div class="panel" id="qrPanel"><h2>Technician</h2><div class="qr" id="qr"></div><div class="mut" style="margin-top:8px;font-size:13px">Scan with the Turbo Button app to connect.</div></div>
+      <div class="panel" id="qrPanel"><h2>Technician</h2><div class="qr" id="qr"></div><div class="mut" id="qrCap" style="margin-top:8px;font-size:13px">Scan with the Turbo Button app to connect.</div></div>
       <div class="panel"><h2>Session</h2>
         <div class="stat"><span>Fixes done</span><b id="nFix">0</b></div>
         <div class="stat"><span>Space freed</span><b id="freed">0 B</b></div>
@@ -77,6 +77,7 @@
     </div>
   </div>
   <div class="log" id="log"></div>
+  <div class="mut" style="font-size:12px;text-align:right;margin-top:-6px">Closing this window ends the Turbo Button session.</div>
 </div>
 <script>
 "use strict";
@@ -110,7 +111,7 @@ function render() {
   const fixes = jobs.filter(j => j.action !== "scan" && j.status === "done");
   $("status").textContent = !st.phone ? "WAITING FOR THE TECHNICIAN" : running ? (running.action === "scan" ? "CHECKING YOUR PC" : "SERVICING YOUR PC") : queued ? "WORKING" : jobs.length ? "READY" : "CONNECTED";
   $("sub").textContent = !st.phone ? "The technician connects with their phone." : running || queued ? `${(running ? 1 : 0) + queued} step(s) in progress` : st.resumed ? "Resumed after restart." : "";
-  $("qrPanel").style.display = st.phone ? "none" : "";
+  $("qrCap").innerHTML = st.phone ? '<span style="color:var(--hi)">Phone connected ✓</span><br>Scan again to reconnect, or to add this PC on another phone.' : "Scan with the Turbo Button app to connect.";
   if (!$("qr").innerHTML && st.qr) $("qr").innerHTML = st.qr;
   if (running) {
     $("nowTitle").textContent = running.title + paramText(running.params);
@@ -154,6 +155,9 @@ setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString([], {
   for (const l of lines) { for (const ch of l) { out += ch; $("boot").textContent = out + "█"; await sleep(12); } out += "\n"; await sleep(90); }
   await sleep(400); $("boot").style.display = "none";
 })();
+// Closing the window ends the session: ask first if work is running, then tell the agent.
+window.addEventListener("beforeunload", (e) => { if (!seenEnd && st && (st.jobs || []).some(j => j.status === "running" || j.status === "queued")) { e.preventDefault(); e.returnValue = ""; } });
+window.addEventListener("pagehide", () => { if (!seenEnd) navigator.sendBeacon("/screen/closed?v=" + v); });
 tick();
 </script>
 </body>

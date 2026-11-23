@@ -107,7 +107,13 @@ func main() {
 			fmt.Println("  SCREEN: " + screenURL)
 		}
 		if err := openScreen(screenURL, a.workDir); err == nil {
-			fmt.Println(con.paint(cDim, "  > Customer screen opened. Closing it doesn't end the session — closing THIS window does."))
+			fmt.Println(con.paint(cDim, "  > Customer screen opened — this console hides itself. Closing the screen ends the session."))
+			if !hasArg("--console") {
+				time.Sleep(1500 * time.Millisecond)
+				if hideConsole() {
+					go a.screenWatchdog()
+				}
+			}
 		}
 	}
 	if a.resumed {
@@ -226,6 +232,21 @@ func lanIPs() []string {
 		ips = append([]string{pref}, ips...)
 	}
 	return ips
+}
+
+// screenWatchdog brings the console back if the screen window disappeared without saying so
+// (e.g. it crashed) and the phone isn't around either, so the session can still be ended.
+func (a *Agent) screenWatchdog() {
+	for range time.Tick(20 * time.Second) {
+		a.mu.Lock()
+		lost := !a.screenSeen.IsZero() && time.Since(a.screenSeen) > 3*time.Minute && time.Since(a.lastSeen) > 3*time.Minute
+		a.mu.Unlock()
+		if lost {
+			showConsole()
+			fmt.Println("\n  > The customer screen was closed. Close this window (or press End on the phone) to end the session.")
+			return
+		}
+	}
 }
 
 func hasArg(a string) bool {

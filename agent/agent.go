@@ -30,7 +30,7 @@ var indexHTML []byte
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.7.0"
+const Version = "0.7.1"
 
 type Job struct {
 	ID       int             `json:"id"`
@@ -84,6 +84,8 @@ type Agent struct {
 	viewToken    string
 	controlURL   string
 	qrSVG        string
+	screenSeen   time.Time // last poll from the customer screen
+	screenClosed time.Time // when the screen reported it was closed
 }
 
 func isLocal(r *http.Request) bool {
@@ -105,6 +107,14 @@ func NewAgent() (*Agent, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return nil, err
+	}
+	// Sweep leftovers from a session that never got to clean up (e.g. the PC lost power).
+	if old, _ := filepath.Glob(filepath.Join(os.TempDir(), "turbobutton-*")); len(old) > 0 {
+		for _, d := range old {
+			if fi, err := os.Stat(d); err == nil && fi.IsDir() && time.Since(fi.ModTime()) > 10*time.Minute {
+				os.RemoveAll(d)
+			}
+		}
 	}
 	wd, err := os.MkdirTemp("", "turbobutton-")
 	if err != nil {
@@ -388,6 +398,7 @@ func (a *Agent) Handler() http.Handler {
 		host, _ := os.Hostname()
 		a.mu.Lock()
 		defer a.mu.Unlock()
+		a.screenSeen, a.screenClosed = time.Now(), time.Time{}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		jobs := a.jobs
@@ -396,6 +407,31 @@ func (a *Agent) Handler() http.Handler {
 		}
 		writeJSON(w, map[string]any{"computer": host, "version": Version, "phone": a.phoneSeen, "resumed": a.resumed,
 			"url": a.controlURL, "qr": a.qrSVG, "jobs": jobs, "startedAt": a.started})
+	})
+	// The screen window is being closed: end the session (unless it reloads, or a restart we started is underway).
+	mux.HandleFunc("POST /screen/closed", func(w http.ResponseWriter, r *http.Request) {
+		if !isLocal(r) || subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("v")), []byte(a.viewToken)) != 1 {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		a.mu.Lock()
+		armed := a.resumeArmed
+		a.screenClosed = time.Now()
+		a.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+		if armed {
+			return
+		}
+		go func() {
+			time.Sleep(5 * time.Second)
+			a.mu.Lock()
+			still := !a.screenClosed.IsZero() // no new poll since: really closed
+			a.mu.Unlock()
+			if still {
+				a.emit(Event{Kind: "line", Job: &Job{}, Text: "Customer screen closed — ending the session."})
+				a.Finish()
+			}
+		}()
 	})
 	mux.HandleFunc("GET /api/info", a.authed(func(w http.ResponseWriter, r *http.Request) {
 		host, _ := os.Hostname()
