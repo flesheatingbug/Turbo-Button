@@ -211,9 +211,10 @@ func init() {
 }
 
 func findAction(id string) *Action {
-	for i := range Catalog {
-		if Catalog[i].ID == id {
-			return &Catalog[i]
+	cat := activeCatalog()
+	for i := range cat {
+		if cat[i].ID == id {
+			return &cat[i]
 		}
 	}
 	return nil
@@ -284,6 +285,12 @@ func ValidateParams(a *Action, in map[string]any) (map[string]string, error) {
 			v = s
 		}
 		out[p.Name] = v
+	}
+	if isLinuxAgent() {
+		if err := linuxProtect(a, out); err != nil {
+			return nil, err
+		}
+		return out, nil
 	}
 	switch a.ID {
 	case "service_mode":

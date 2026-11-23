@@ -184,7 +184,7 @@
     </div>
     <div class="card">
       <div class="row"><h2 class="grow" style="margin:0">Deep checks <span class="mut" style="font-weight:400">· optional, 10–30 min</span></h2><button class="b2" id="deepBtn">Run</button></div>
-      <div class="mut" style="margin-top:6px">Read-only checks that run in the background: pending Windows updates, outdated programs, system-file and Windows-image corruption, file-system errors, a malware quick scan and what's filling the disk. Worth it for slow, crashing or possibly infected PCs. Results feed into the plan.</div>
+      <div class="mut" style="margin-top:6px" id="deepInfo">Read-only checks that run in the background: pending Windows updates, outdated programs, system-file and Windows-image corruption, file-system errors, a malware quick scan and what's filling the disk. Worth it for slow, crashing or possibly infected PCs. Results feed into the plan.</div>
       <div id="deepStatus" class="mut" style="margin-top:6px"></div>
     </div>
     <div id="scanView"></div>
@@ -272,7 +272,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.8.1";
+const PAGE_VERSION = "0.9.0";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -477,6 +477,7 @@ function explainNoPlan(t, err) {
 }
 
 // ---------- catalog & validation ----------
+const isLinux = (sess = S) => sess?.info?.os === "linux";
 const act = (id) => S.info?.catalog.find(a => a.id === id);
 function validate(p) {
   const a = act(p.action); if (!a) return "unknown action";
@@ -506,11 +507,13 @@ async function startScan() {
   catch (e) { toast(e.message); }
 }
 function gbRow(k, v) { return `<div>${esc(k)}</div><div>${esc(v).replace(/\b(undefined|null|NaN)\b/g, "?")}</div>`; }
+const DEEP_WIN_TEXT = "Read-only checks that run in the background: pending Windows updates, outdated programs, system-file and Windows-image corruption, file-system errors, a malware quick scan and what's filling the disk. Worth it for slow, crashing or possibly infected PCs. Results feed into the plan.";
 function renderScan() {
   const s = S.scan; if (!s) return;
+  $("deepInfo").textContent = isLinux() ? "Read-only checks that run in the background: pending package, Flatpak and firmware updates, what's filling the disk, and a short SMART self-test on each drive (about 2 min per drive). Results feed into the plan." : DEEP_WIN_TEXT;
   const sys = s.system || {};
   let html = `<div class="card"><h2>${esc(sys.computerName || "PC")}</h2><div class="kv">
-    ${gbRow("Windows", `${sys.os || ""} ${sys.displayVersion || ""} (build ${sys.build || "?"})`)}
+    ${isLinux() ? gbRow("Linux", `${sys.os || ""} · kernel ${sys.build || "?"}${sys.desktop ? " · " + sys.desktop : ""}`) + gbRow("Packages", sys.packageManager || "?") : gbRow("Windows", `${sys.os || ""} ${sys.displayVersion || ""} (build ${sys.build || "?"})`)}
     ${gbRow("Model", `${sys.manufacturer || ""} ${sys.model || ""}`)}
     ${gbRow("CPU", `${sys.cpu || ""} · ${sys.cores || "?"}C/${sys.threads || "?"}T`)}
     ${gbRow("RAM", `${sys.ramGB} GB (${sys.freeRamGB} GB free)`)}
@@ -518,32 +521,40 @@ function renderScan() {
     ${gbRow("Installed", sys.installDate || "")}
     ${gbRow("Scanned", s.scannedAt || "")}
   </div></div>`;
-  html += `<div class="card"><h2>Drives</h2><div class="kv">` + (s.volumes || []).map(v => gbRow(v.drive + ": " + (v.label || ""), `${v.freeGB} / ${v.sizeGB} GB free (${v.freePct}%) ${v.health !== "Healthy" ? "⚠ " + v.health : ""}`)).join("") + `</div>`;
-  html += `<div class="mut" style="margin-top:6px">` + (s.physicalDisks || []).map(d => `${esc(d.name)} · ${esc(d.mediaType)} · ${esc(d.health)}${d.wearPct != null ? " · wear " + esc(d.wearPct) + "%" : ""}${d.tempC ? " · " + esc(d.tempC) + "°C" : ""}`).join("<br>") + `</div></div>`;
+  html += `<div class="card"><h2>Drives</h2><div class="kv">` + (s.volumes || []).map(v => gbRow(isLinux() ? `${v.drive} (${v.fs || ""})` : v.drive + ": " + (v.label || ""), `${v.freeGB} / ${v.sizeGB} GB free (${v.freePct}%) ${v.health !== "Healthy" ? "⚠ " + v.health : ""}`)).join("") + `</div>`;
+  html += `<div class="mut" style="margin-top:6px">` + (s.physicalDisks || []).map(d => `${esc(d.name)} · ${esc(d.mediaType)} · ${esc(d.health)}${d.wearPct != null ? " · wear " + esc(d.wearPct) + "%" : ""}${d.tempC ? " · " + esc(d.tempC) + "°C" : ""}${d.powerOnHours ? " · " + esc(Math.round(d.powerOnHours / 24)) + " days on" : ""}${d.reallocatedSectors ? " · ⚠ " + esc(d.reallocatedSectors) + " reallocated" : ""}${d.pendingSectors ? " · ⚠ " + esc(d.pendingSectors) + " pending" : ""}${d.mediaErrors ? " · ⚠ " + esc(d.mediaErrors) + " media errors" : ""}`).join("<br>") + `</div></div>`;
   const c = s.cleanupPotentialGB || {};
   html += `<div class="card"><h2>Reclaimable space</h2><div class="kv">` + Object.entries(c).filter(([k]) => !["windowsOldExists","pagefileGB"].includes(k)).map(([k, v]) => gbRow(k, typeof v === "number" ? v + " GB" : v)).join("") + `</div></div>`;
   const ev = s.events || {}, sec = s.security || {};
   html += `<div class="card"><h2>Health</h2><div class="kv">
     ${gbRow("Errors (7 days)", ev.errorsLast7Days)}${gbRow("Unexpected shutdowns (30d)", ev.unexpectedShutdowns30d)}${gbRow("Blue screens (30d)", ev.bluescreens30d)}${gbRow("Disk errors (30d)", ev.diskErrors30d)}
-    ${gbRow("Antivirus", (sec.antivirusProducts || []).join(", "))}${gbRow("Real-time protection", sec.realTime)}${gbRow("Recent threats", (sec.recentThreats || []).length)}
-    ${gbRow("Reboot pending", s.updates?.rebootPending)}${gbRow("Problem devices", (s.problemDevices || []).length)}
+    ${isLinux() ? gbRow("Kernel crashes (30d)", ev.kernelPanicsOrOops30d) + gbRow("Out-of-memory kills (30d)", ev.oomKills30d) + gbRow("Failed services", (s.services || []).filter(x => x.failed).length) + gbRow("Firewall", sec.firewall) + gbRow("Pending updates", s.updates?.pendingFromCache ?? "?") + gbRow("Last update", s.updates?.daysSinceLastUpdate != null ? s.updates.daysSinceLastUpdate + " days ago" : "?") + gbRow("Snapshots", `${s.restorePoints?.tool || "none"} (${s.restorePoints?.count || 0})`)
+      : gbRow("Antivirus", (sec.antivirusProducts || []).join(", ")) + gbRow("Real-time protection", sec.realTime) + gbRow("Recent threats", (sec.recentThreats || []).length) + gbRow("Problem devices", (s.problemDevices || []).length)}
+    ${gbRow("Reboot pending", s.updates?.rebootPending)}
     ${s.battery ? gbRow("Battery health", (s.battery.healthPct ?? "?") + "%") : ""}
   </div></div>`;
   const st = (s.startup || []);
   html += diagCards(s);
+  const failed = (s.services || []).filter(x => x.failed);
+  if (isLinux() && failed.length) html += `<div class="card"><h2>Failed services (${failed.length})</h2><div class="list">` + failed.map(x =>
+    `<div class="li"><div class="t">${esc(x.name)}<div class="params">${esc(x.displayName || "")}</div></div><button class="b2 sm" data-rs="${esc(x.name)}">Restart</button></div>`).join("") + `</div></div>`;
   html += `<div class="card"><h2>Startup apps (${st.filter(x => x.enabled).length} enabled)</h2><div class="list">` + st.map((x, i) =>
     `<div class="li"><div class="t">${esc(x.name)}<div class="params">${esc(x.location)} · ${esc(x.command)}</div></div>${x.enabled ? `<button class="b2 sm" data-st="${i}">Disable</button>` : '<span class="mut">off</span>'}</div>`).join("") + `</div></div>`;
   const apps = (s.apps || []).slice().sort((a, b) => (b.likelyBloat - a.likelyBloat) || a.name.localeCompare(b.name));
-  html += `<div class="card"><details><summary>Store apps (${apps.filter(a => a.likelyBloat).length} likely bloat of ${apps.length})</summary><div class="list">` + apps.map((x, i) =>
+  if (isLinux()) html += `<div class="card"><details><summary>Flatpak / Snap apps (${apps.length})</summary><div class="list">` + apps.map(x => `<div class="li"><div class="t">${esc(x.name)}<div class="params">${esc(x.kind)} ${esc(x.version || "")}</div></div></div>`).join("") + `</div></details></div>`;
+  else html += `<div class="card"><details><summary>Store apps (${apps.filter(a => a.likelyBloat).length} likely bloat of ${apps.length})</summary><div class="list">` + apps.map((x, i) =>
     `<div class="li"><div class="t">${x.likelyBloat ? "⚑ " : ""}${esc(x.name)}<div class="params">${esc(x.publisher)}</div></div><button class="b2 sm" data-app="${esc(x.name)}">Remove</button></div>`).join("") + `</div></details></div>`;
   html += `<div class="card"><details><summary>Installed programs (${(s.programs || []).length})</summary><div class="list">` + (s.programs || []).map(p =>
-    `<div class="li"><div class="t">${esc(p.name)}<div class="params">${esc(p.publisher)} ${esc(p.version)}${p.sizeMB ? " · " + esc(p.sizeMB) + " MB" : ""}</div></div></div>`).join("") + `</div></details></div>`;
+    `<div class="li"><div class="t">${esc(p.name)}<div class="params">${esc(p.publisher || "")} ${esc(p.version || "")}${p.sizeMB ? " · " + esc(p.sizeMB) + " MB" : ""}</div></div></div>`).join("") + `</div></details></div>`;
   if ((s.errors || []).length) html += `<div class="card"><details><summary>Scan warnings (${s.errors.length})</summary><pre>${esc(s.errors.join("\n"))}</pre></details></div>`;
   $("scanView").innerHTML = html;
   $("scanView").querySelectorAll("[data-st]").forEach(b => b.onclick = async () => {
     const x = st[+b.dataset.st];
     if (!confirm(`Disable startup entry "${x.name}"?`)) return;
-    try { await queue("startup_disable", { location: x.location, name: x.name }, "Disabled manually from scan"); toast("Queued"); } catch (e) { toast(e.message); }
+    try { await (isLinux() ? queue("autostart_disable", { path: x.path }, "Disabled manually from scan") : queue("startup_disable", { location: x.location, name: x.name }, "Disabled manually from scan")); toast("Queued"); } catch (e) { toast(e.message); }
+  });
+  $("scanView").querySelectorAll("[data-rs]").forEach(b => b.onclick = async () => {
+    try { await queue("service_restart", { name: b.dataset.rs }, "Restarted manually from scan"); toast("Queued"); } catch (e) { toast(e.message); }
   });
   $("scanView").querySelectorAll("[data-app]").forEach(b => b.onclick = async () => {
     if (!confirm(`Remove app "${b.dataset.app}" for all users?`)) return;
@@ -586,7 +597,7 @@ function diagCards(s) {
   let h = "";
   const bp = s.bootPerformance || {}, last = (bp.recentBoots || [])[0];
   if (last || (bp.slowdowns || []).length) {
-    h += `<div class="card"><h2>Startup speed</h2><div class="kv">` + (last ? gbRow("Last boot", `${last.bootSec}s (desktop after ${last.toDesktopSec}s, settled ${last.afterLoginSec}s later)`) : "") + `</div>`;
+    h += `<div class="card"><h2>Startup speed</h2><div class="kv">` + (last ? gbRow("Last boot", last.afterLoginSec != null ? `${last.bootSec}s (desktop after ${last.toDesktopSec}s, settled ${last.afterLoginSec}s later)` : `${last.bootSec}s${last.toDesktopSec ? " (desktop after " + last.toDesktopSec + "s)" : ""}`) : "") + `</div>`;
     if ((bp.slowdowns || []).length) h += `<div class="mut" style="margin-top:6px">Slowing it down:</div>` + bp.slowdowns.slice(0, 6).map(x => `<div class="params">${esc(x.kind)} · ${esc(x.name)} · up to ${esc(x.worstDelaySec)}s</div>`).join("");
     h += `</div>`;
   }
@@ -596,7 +607,7 @@ function diagCards(s) {
       (cr.hardwareErrors90d ? `<div class="mut">Hardware error reports (WHEA): ${esc(cr.hardwareErrors90d)}</div>` : "") + `</div>`;
   }
   const pf = s.performance;
-  if (pf) h += `<div class="card"><h2>Right now</h2><div class="kv">${gbRow("CPU", pf.cpuNowPct + "%")}${gbRow("Memory in use", pf.committedPct + "% committed, " + pf.availableMB + " MB free")}${(pf.topCpu || []).length ? gbRow("Busiest", pf.topCpu.join(", ")) : ""}${(pf.thermalZonesC || []).length ? gbRow("Temperature", pf.thermalZonesC.join(" / ") + " °C") : ""}</div></div>`;
+  if (pf) h += `<div class="card"><h2>Right now</h2><div class="kv">${gbRow("CPU", pf.cpuNowPct + "%")}${gbRow("Memory in use", pf.committedPct + "% committed, " + pf.availableMB + " MB free")}${(pf.topCpu || []).length ? gbRow("Busiest", pf.topCpu.join(", ")) : ""}${pf.swapUsedPct ? gbRow("Swap used", pf.swapUsedPct + "%") : ""}${(pf.thermalZonesC || []).length ? gbRow("Temperature", pf.thermalZonesC.join(" / ") + " °C") : ""}</div></div>`;
   const ad = adwareSigns(s), bn = s.browsersAndNetwork || {};
   if (bn.extensions || bn.dns) {
     const flags = ad.badSearch.length + ad.extFlags.length + ad.forced.length + (ad.proxy ? 1 : 0) + ad.dns.length + (ad.hosts.length ? 1 : 0);
@@ -637,6 +648,26 @@ function compactScan(s, tight = false) {
 function catalogText() {
   return JSON.stringify(S.info.catalog.map(a => ({ id: a.id, desc: a.desc, risk: a.risk, long: a.long || undefined, params: (a.params || []).map(p => ({ name: p.name, type: p.type, enum: p.enum, desc: p.desc })) })));
 }
+const PLAN_SYSTEM_LINUX = `You are an expert Linux repair technician's assistant. A technician is servicing a customer's Linux PC and will approve each step on their phone.
+You get a JSON scan of the PC (system.os names the distro, system.packageManager the package tool) and a catalog of actions the on-PC agent can run. Produce a prioritised plan using ONLY catalog actions with valid parameters (use unit names and autostart paths exactly as in the scan).
+Rules:
+- Never weaken security: never disable the firewall, AppArmor/SELinux, the display manager, NetworkManager, systemd core units, polkit, dbus, or the customer's login. Never remove kernels or packages other than via orphans_remove.
+- Be conservative with customer data. trash cleanup is always risk "high" and askCustomer true. user_cache cleanup is fine (apps rebuild it) but mention it signs nobody out.
+- Propose restore_point first if a snapshot tool exists (restorePoints.tool not "none"); otherwise mention in manual that no snapshot tool is set up.
+- Updates: if updates are stale (daysSinceLastUpdate > 7) or pending, propose system_update. On Arch-based systems mention reading the news before big updates. fwupd_update only if fwupd is present and updates_check found firmware.
+- Disk health: SMART FAILING, reallocated/pending/uncorrectable sectors, NVMe media errors or wear ≥ 80% are critical findings → back up now; propose smart_test for disks with warning signs. Kernel I/O errors in events.diskErrors30d are a warning.
+- Failed services: propose service_restart for ones that look important, failed_reset after; explain what each unit does. Disable a service only if it clearly isn't needed (askCustomer true).
+- Autostart: autostart_disable only for clear updaters/tray junk; apps the customer may use → askCustomer true.
+- Out-of-memory kills, high swap or committed memory → advise more RAM or zram in manual. Kernel oops/panics → check drivers (often the GPU driver) and hardware.
+- Slow boot: name the worst units from bootPerformance.slowdowns; NetworkManager-wait-online and stale fstab mounts are common causes (put fixes the agent can't do in manual).
+- Adware on Linux: forced browser policies in /etc and hosts redirects. remove_browser_policies only if they force unknown extensions or search (askCustomer true); corporate/managed PCs → leave alone.
+- SSH: root login or password auth with sshd exposed to the network is a warning finding; listeningOnNetwork shows exposed services.
+- If DEEP CHECK RESULTS are given, use them (updates_check counts, smart_test verdicts, disk_usage biggest folders). Don't re-propose the read-only checks themselves.
+- system_update or fwupd_update that needs a restart means proposing restart_pc {minutes:"1"} as the VERY LAST proposal with askCustomer true.
+- Things the agent cannot do (driver installs, editing fstab, GRUB, hardware) go in "manual".
+Reply with JSON only, no prose, in this shape:
+{"summary":"2-4 sentences for the technician","health":"good|fair|poor","findings":[{"severity":"info|warn|critical","title":"","detail":""}],"proposals":[{"action":"id","params":{},"reason":"why","risk":"low|medium|high","askCustomer":false}],"manual":[{"title":"","detail":""}]}`;
+const planSystem = () => isLinux() ? PLAN_SYSTEM_LINUX : PLAN_SYSTEM;
 const PLAN_SYSTEM = `You are an expert Windows repair technician's assistant. A technician is servicing a customer's PC and will approve each step on their phone.
 You get a JSON scan of the PC and a catalog of actions the on-PC agent can run. Produce a prioritised plan using ONLY catalog actions with valid parameters (use names, locations and paths exactly as they appear in the scan).
 Rules:
@@ -678,7 +709,7 @@ $("planBtn").onclick = async () => {
   $("planStatus").innerHTML = '<span class="spin"></span> The AI is reading the scan… (20–90 s, longer on a local model)';
   $("planBtn").disabled = true;
   const sess = S;
-  try { usePlan(parseJSON(await askAI(PLAN_SYSTEM, planUser(), 8000, planSchema())), "AI (" + getAI().model + ")", sess); }
+  try { usePlan(parseJSON(await askAI(planSystem(), planUser(), 8000, planSchema())), "AI (" + getAI().model + ")", sess); }
   catch (e) { $("planStatus").textContent = "AI error: " + e.message + " — try Quick plan, or the copy/paste option below."; }
   $("planBtn").disabled = false;
 };
@@ -702,7 +733,7 @@ function planUserChat() {
 // so the AI treats the instruction as the request (instructions inside a long paste get treated as content).
 function aiAppSend(kind) {
   const plan = kind === "plan";
-  const system = plan ? PLAN_SYSTEM : REPORT_SYSTEM, shape = plan ? "summary, health, findings, proposals, manual" : "headline, customerSummary, workDone, issuesFound, recommendations, technicalNotes";
+  const system = plan ? planSystem() : REPORT_SYSTEM, shape = plan ? "summary, health, findings, proposals, manual" : "headline, customerSummary, workDone, issuesFound, recommendations, technicalNotes";
   const data = plan ? planUserChat() : reportUser();
   const message = `Turbo Button ${plan ? "plan" : "report"} request: read the attached file and follow the INSTRUCTIONS section in it exactly. ` +
     `Reply with ONLY one JSON object (${shape}) in a single \`\`\`json code block typed directly in the chat — not as a file, document, artifact or canvas. No other text: no review, no summary, no questions.`;
@@ -804,7 +835,8 @@ const COMMON_APPS = /(spotify|discord|teams|skype|zoom|slack|steam|epic|origin|e
 const JUNK_APPS = /(BingNews|BingFinance|BingSports|BingSearch|GetHelp|Getstarted|MicrosoftOfficeHub|WindowsFeedbackHub|MixedReality|3DBuilder|Microsoft3DViewer|OneConnect|Messaging|Wallet|CandyCrush|king\.com|549981C3F5F10|PowerAutomateDesktop|DevHome)/i;
 const JUNK_PROGRAMS = /(mcafee|norton|webadvisor|driver ?booster|driver ?easy|driver ?support|advanced ?systemcare|pc ?cleaner|pc ?optimizer|reimage|restoro|segurazo|outbyte|wise ?care|toolbar|ask\.com|conduit|mywebsearch|bytefence|pc ?accelerate|systweak|iobit)/i;
 
-function quickPlan(s) {
+function quickPlan(s) { return isLinux() ? quickPlanLinux(s) : quickPlanWin(s); }
+function quickPlanWin(s) {
   const P = [], F = [], M = [];
   const prop = (action, params, reason, risk = "low", askCustomer = false) => {
     if (P.some(p => p.action === action && JSON.stringify(p.params) === JSON.stringify(params))) return;
@@ -983,6 +1015,120 @@ function quickPlan(s) {
   return { summary, health, findings: F, proposals: P, manual: M };
 }
 
+// ---------- Quick plan for Linux PCs ----------
+const LINUX_JUNK_AUTOSTART = /(update[- ]?notifier|updater|software[- ]?update|discover[- ]?notifier|gnome-software|mintupdate|pamac-tray|octopi-notifier|tracker-miner|baloo|zeitgeist|geoclue-demo|print-applet|orca-autostart|evolution-alarm|xdg-user-dirs-update)/i;
+const LINUX_KEEP_AUTOSTART = /(polkit|keyring|ssh-agent|gpg|pipewire|pulseaudio|wireplumber|xdg-desktop-portal|at-spi|ibus|fcitx|nm-applet|networkmanager|blueman|bluetooth|power|xsettings|kwallet|kde|plasma|gnome-shell|xfce|lxqt|mate-settings|cinnamon|screensaver|xscreensaver|light-locker|snapd|user-dirs)/i;
+const LINUX_IMPORTANT_UNIT = /^(NetworkManager|systemd-|display-manager|gdm|sddm|lightdm|bluetooth|cups|pipewire|wireplumber|sshd|ssh|ufw|firewalld|apparmor|polkit|dbus|udisks2|upower|thermald|tlp|power-profiles)/i;
+
+function quickPlanLinux(s) {
+  const P = [], F = [], M = [];
+  const prop = (action, params, reason, risk = "low", askCustomer = false) => {
+    if (P.some(p => p.action === action && JSON.stringify(p.params) === JSON.stringify(params))) return;
+    P.push({ action, params, reason, risk, askCustomer });
+  };
+  const find = (severity, title, detail) => F.push({ severity, title, detail });
+  const deep = deepResults(), dr = (a) => deep[a]?.status === "done" ? (deep[a].result || {}) : null;
+  const sys = s.system || {}, c = s.cleanupPotentialGB || {}, ev = s.events || {}, sec = s.security || {}, upd = s.updates || {};
+  const root = (s.volumes || []).find(v => v.drive === "/") || (s.volumes || [])[0];
+  const arch = /arch|manjaro|endeavour|cachy|garuda/i.test((sys.edition || "") + " " + (sys.idLike || ""));
+
+  if ((s.restorePoints?.tool || "none") === "none") M.push({ title: "Set up snapshots", detail: "No Snapper or Timeshift found — consider Timeshift so updates can be rolled back." });
+  else find("info", "Snapshots available", `${s.restorePoints.tool}: ${s.restorePoints.count} snapshot(s). One is made automatically before the first change.`);
+
+  // Space
+  if (root) {
+    if (root.freePct < 10) find("critical", `Very low space on ${root.drive}`, `${root.freeGB} GB free (${root.freePct}%). Updates can fail and apps misbehave when the disk fills.`);
+    else if (root.freePct < 20) find("warn", `Low space on ${root.drive}`, `${root.freeGB} GB free (${root.freePct}%).`);
+  }
+  const labels = { pkg_cache: "old package downloads", journal: "system logs (kept: last 4 weeks / 200 MB)", user_cache: "app caches (rebuilt automatically)", thumbnails: "thumbnail cache", coredumps: "crash dumps", tmp: "old temporary files" };
+  for (const [t, label] of Object.entries(labels)) if ((c[t] || 0) >= (t === "journal" ? 0.5 : 0.2)) prop("cleanup", { target: t }, `${c[t]} GB of ${label}.`);
+  if ((c.trash || 0) >= 0.5) prop("cleanup", { target: "trash" }, `${c.trash} GB in the Trash. Permanently deletes the customer's deleted files.`, "high", true);
+  if (["pacman", "apt-get", "dnf"].includes(sys.packageManager)) prop("orphans_remove", {}, "Remove packages nothing depends on any more.", "medium");
+  if (upd.flatpak) prop("flatpak_unused", {}, "Remove Flatpak runtimes no app uses.");
+  if (root && root.freePct < 20 && !dr("disk_usage")) prop("disk_usage", {}, "Find what's filling the drive (read-only).");
+
+  // Autostart
+  for (const x of (s.startup || []).filter(x => x.enabled)) {
+    const t = x.name + " " + x.command + " " + x.path;
+    if (LINUX_KEEP_AUTOSTART.test(t)) continue;
+    if (LINUX_JUNK_AUTOSTART.test(t)) prop("autostart_disable", { path: x.path }, `Not needed at login: ${x.name}.`);
+    else if (COMMON_APPS.test(t)) prop("autostart_disable", { path: x.path }, `${x.name} starts at login. Fine to disable if the customer opens it manually.`, "low", true);
+  }
+
+  // Services
+  const failed = (s.services || []).filter(x => x.failed);
+  if (failed.length) {
+    find("warn", `${failed.length} failed service(s)`, failed.map(x => x.name).join(", "));
+    for (const x of failed) if (LINUX_IMPORTANT_UNIT.test(x.name)) prop("service_restart", { name: x.name }, `${x.name} has failed — try restarting it.`);
+    prop("failed_reset", {}, "Clear the failed markers so new failures stand out.");
+    M.push({ title: "Check failed services", detail: "If a restart doesn't fix it: journalctl -u <unit> -b shows why. " + failed.map(x => x.name).join(", ") });
+  }
+  if ((s.services || []).some(x => x.name === "NetworkManager-wait-online.service")) M.push({ title: "Faster boot", detail: "NetworkManager-wait-online is enabled — it usually only slows the boot on desktops: systemctl disable NetworkManager-wait-online.service" });
+
+  // Disks
+  for (const d of s.physicalDisks || []) {
+    const bad = (d.reallocatedSectors || 0) + (d.pendingSectors || 0) + (d.offlineUncorrectable || 0) + (d.mediaErrors || 0);
+    if (/FAILING/.test(d.health || "")) find("critical", `Drive failing: ${d.name}`, "SMART reports the drive is failing. Back up the customer's data now and replace it.");
+    else if (bad > 0) { find("critical", `Drive has bad sectors: ${d.name}`, `${d.reallocatedSectors || 0} reallocated, ${d.pendingSectors || 0} pending, ${d.offlineUncorrectable || 0} uncorrectable, ${d.mediaErrors || 0} media errors. Back up and plan a replacement.`); prop("smart_test", { device: d.device }, "Warning signs on this drive — run a short self-test.", "low"); }
+    if (d.wearPct >= 80) find("critical", `SSD nearly worn out: ${d.name}`, `${d.wearPct}% wear.`); else if (d.wearPct >= 50) find("warn", `SSD wear: ${d.name}`, `${d.wearPct}% wear.`);
+    if (d.tempC >= 70) find("warn", `Drive running hot: ${d.name}`, `${d.tempC}°C.`);
+    if (/unknown/.test(d.health || "")) { M.push({ title: "Install smartmontools", detail: "Drive health couldn't be read. Install smartmontools and rescan to check the drives." }); break; }
+  }
+  if ((s.physicalDisks || []).some(d => d.mediaType === "HDD" && d.bus !== "virtio")) M.push({ title: "Upgrade to an SSD", detail: "A spinning hard drive is the system drive's biggest bottleneck." });
+  if ((ev.diskErrors30d || 0) > 0) find("warn", "Disk errors in the kernel log", `${ev.diskErrors30d} in 30 days — check cables and SMART, then the file system from a live USB.`);
+  if ((s.physicalDisks || []).some(d => d.mediaType === "SSD")) prop("fstrim", {}, "Routine TRIM keeps SSDs fast.");
+
+  // Stability / performance
+  if ((ev.kernelPanicsOrOops30d || 0) > 0) { find("warn", "Kernel crashes", `${ev.kernelPanicsOrOops30d} oops/panic message(s) in 30 days — often a GPU driver or hardware fault.`); M.push({ title: "Check drivers and hardware", detail: "Kernel crashes: try the LTS kernel, update/reinstall the GPU driver, test RAM with memtest86+." }); }
+  if ((ev.oomKills30d || 0) > 0) { find("warn", "Ran out of memory", `${ev.oomKills30d} out-of-memory event(s) in 30 days.`); M.push({ title: "More memory", detail: `${sys.ramGB} GB RAM. Add RAM, or enable zram/a swap file.` }); }
+  if ((ev.appCrashes30d || []).length >= 3) find("info", "Programs crashing", ev.appCrashes30d.slice(0, 6).join(", "));
+  if ((ev.errorsLast7Days || 0) > 200) find("info", "Busy error log", `${ev.errorsLast7Days} errors in 7 days. Top: ` + (ev.topSources || []).slice(0, 3).map(x => `${x.source} (${x.count})`).join(", "));
+  const pf = s.performance || {};
+  if (pf.committedPct > 85 || pf.swapUsedPct > 50) find("warn", "Memory pressure", `${pf.committedPct}% committed, swap ${pf.swapUsedPct}% used, ${pf.availableMB} MB free.`);
+  if (pf.cpuNowPct > 60) find("warn", "Busy CPU at idle", `${pf.cpuNowPct}% — ` + (pf.topCpu || []).join(", "));
+  if ((pf.thermalZonesC || []).some(t => t >= 85)) find("warn", "Running hot", pf.thermalZonesC.join(" / ") + " °C — clean fans and vents.");
+  if ((sys.ramGB || 99) < 3.5) M.push({ title: "Add more RAM", detail: `${sys.ramGB} GB is tight for a modern desktop and browser.` });
+  if (s.battery?.healthPct != null && s.battery.healthPct < 80) find(s.battery.healthPct < 60 ? "critical" : "warn", "Battery wear", `${s.battery.healthPct}% of original capacity.`);
+  const lastBoot = s.bootPerformance?.recentBoots?.[0];
+  if (lastBoot && lastBoot.bootSec > 45) find(lastBoot.bootSec > 90 ? "warn" : "info", `Slow startup: ${lastBoot.bootSec}s`, "Slowest: " + ((s.bootPerformance.slowdowns || []).slice(0, 4).map(x => `${x.name} (${x.worstDelaySec}s)`).join(", ") || "not recorded"));
+
+  // Updates
+  const stale = upd.daysSinceLastUpdate == null || upd.daysSinceLastUpdate > 7 || (upd.pendingFromCache || 0) > 0;
+  const uc = dr("updates_check");
+  if (uc) { if (uc.found || uc.flatpakUpdates) find("info", `${(uc.found || 0) + (uc.flatpakUpdates || 0)} update(s) waiting`, (uc.packages || []).slice(0, 5).join("; ")); }
+  if (upd.daysSinceLastUpdate > 30) find("warn", "Not updated for a while", `Last system update ${upd.daysSinceLastUpdate} days ago.`);
+  if ((uc && (uc.found || uc.flatpakUpdates)) || (!uc && stale)) prop("system_update", {}, (upd.daysSinceLastUpdate != null ? `Last update ${upd.daysSinceLastUpdate} days ago. ` : "") + "Install package and Flatpak updates." + (arch ? " Arch-based: check the distro news first." : ""), "medium", arch);
+  if (uc && uc.firmwareUpdates) prop("fwupd_update", {}, `${uc.firmwareUpdates} firmware update(s) available.`, "medium", true);
+  if (upd.rebootPending) find("info", "Restart pending", "The kernel or core libraries were updated — restart before handing back.");
+
+  // Security
+  if (/none/.test(sec.firewall || "")) find("info", "No firewall active", "Fine behind a home router; enable ufw/firewalld on laptops used on public Wi-Fi.");
+  if (sec.sshRunning && sec.sshRootLogin) find("warn", "SSH allows root login", "Set PermitRootLogin no in /etc/ssh/sshd_config.");
+  if (sec.sshRunning && sec.sshPasswordAuth && (sec.listeningOnNetwork || []).some(x => /:22\b/.test(x))) find("info", "SSH with passwords is open to the network", "Consider key-only login or stopping sshd if unused.");
+
+  // Browser hijacks
+  const ad = adwareSigns(s);
+  if (ad.badSearch.length) { find("critical", "Browser search hijacked", ad.badSearch.join("; ")); M.push({ title: "Reset browser settings", detail: "Reset the affected browser's settings and remove unknown extensions." }); }
+  if (ad.extFlags.length) find("warn", "Suspicious browser extensions", ad.extFlags.join("; "));
+  if (ad.forced.length) { find("warn", "Forced browser policies", ad.forced.map(p => p.key).join("; ")); prop("remove_browser_policies", {}, "Policies force extensions/homepage/search. A backup is kept.", "high", true); }
+  const secBlock = ad.hosts.filter(h => /(clamav|ubuntu\.com|debian\.org|archlinux\.org|fedoraproject|opensuse|flathub|mozilla|google\.com)/i.test(h));
+  if (secBlock.length) { find("critical", "Hosts file blocks update/security sites", secBlock.slice(0, 5).join("; ")); prop("reset_hosts", {}, "Restore the default hosts file. A backup is kept.", "medium"); }
+  else if (ad.hosts.length > 100) find("info", `Hosts file has a block list (${ad.hosts.length} entries)`, "Looks deliberate — left alone.");
+  else if (ad.hosts.length) find("info", "Hosts file has entries", ad.hosts.slice(0, 5).join("; "));
+
+  const du = dr("disk_usage");
+  if (du && (du.folders || []).length) find("info", "Biggest folders", du.folders.slice(0, 5).map(f => `${f.path} ${f.gb} GB`).join("; "));
+  for (const [k, v] of Object.entries(deep)) if (k.startsWith("smart_test") && v.status === "done" && v.result?.verdict && !/without error|completed|passed/i.test(String(v.result.verdict))) find("critical", "SMART self-test problem: " + k.slice(11), String(v.result.verdict));
+
+  if (P.some(p => p.action === "system_update" || p.action === "fwupd_update") || upd.rebootPending) prop("restart_pc", { minutes: "1" }, "Load the new kernel/firmware. Do this LAST — write the report first; the session ends when the PC restarts.", "medium", true);
+  const order = ["disk_usage", "cleanup", "orphans_remove", "flatpak_unused", "autostart_disable", "service_restart", "failed_reset", "remove_browser_policies", "reset_hosts", "smart_test", "fstrim", "system_update", "fwupd_update", "restart_pc"];
+  P.sort((a, b) => order.indexOf(a.action) - order.indexOf(b.action));
+  const crit = F.filter(f => f.severity === "critical").length, warn = F.filter(f => f.severity === "warn").length;
+  const gb = ["pkg_cache", "journal", "user_cache", "thumbnails", "coredumps", "tmp"].reduce((t, k) => t + (c[k] || 0), 0);
+  return { summary: `${sys.manufacturer || ""} ${sys.model || "PC"} on ${sys.os || "Linux"}. ${crit} critical and ${warn} warning finding(s). About ${gb.toFixed(1)} GB of caches and logs can be cleared; ${failed.length} failed service(s); ${P.filter(p => p.action === "autostart_disable").length} autostart item(s) flagged.`,
+    health: crit ? "poor" : warn >= 2 ? "fair" : "good", findings: F, proposals: P, manual: M };
+}
+
 // manual builder
 function buildManual() {
   const sel = $("manAction");
@@ -1008,7 +1154,7 @@ $("askBtn").onclick = async () => {
   $("askOut").innerHTML = '<span class="spin"></span>';
   try {
     const done = S.jobs.filter(j => j.status === "done" || j.status === "failed").map(j => ({ action: j.action, params: j.params, status: j.status, result: j.result, error: j.error }));
-    const t = await askAI("You are an expert Windows repair technician's assistant. Answer concisely and practically, for a technician, using the scan data. Plain text, no markdown tables.",
+    const t = await askAI(`You are an expert ${isLinux() ? "Linux" : "Windows"} repair technician's assistant. Answer concisely and practically, for a technician, using the scan data. Plain text, no markdown tables.`,
       "SCAN:\n" + (S.scan ? compactScan(S.scan) : "none yet") + "\n\nWORK DONE:\n" + JSON.stringify(done) + "\n\nQUESTION: " + q, 2000);
     $("askOut").textContent = t;
   } catch (e) { $("askOut").textContent = "AI error: " + e.message; }
@@ -1065,9 +1211,14 @@ function resultLine(j) {
   if (r.removedEntries != null) bits.push(`${r.removedEntries} hosts entr${r.removedEntries === 1 ? "y" : "ies"} removed`);
   if (Array.isArray(r.removed) && j.action === "remove_browser_policies") bits.push(r.removed.length + " policy key(s) removed");
   if (r.changes && j.action === "reset_dns") bits.push(r.changes.length + " adapter(s) reset");
+  if (j.action === "updates_check") bits.push(`${r.found || 0} package update(s)` + (r.flatpakUpdates ? `, ${r.flatpakUpdates} Flatpak` : "") + (r.firmwareUpdates ? `, ${r.firmwareUpdates} firmware` : ""));
+  if (j.action === "orphans_remove") bits.push(r.removedPackages ? r.removedPackages.length + " package(s) removed" : "");
+  if (j.action === "autostart_disable" || j.action === "autostart_enable") bits.push(r.enabled ? "enabled" : "disabled");
+  if (j.action === "service_restart" && r.state) bits.push("now " + r.state);
+  if (j.action === "restore_point" && r.tool) bits.push("snapshot made with " + r.tool);
   if (r.rebootRequired) bits.push("restart needed");
   if (r.note) bits.push(r.note);
-  return bits.join(" · ");
+  return bits.filter(Boolean).join(" · ");
 }
 function renderJobs() {
   const total = allJobs().reduce((s, j) => s + (j.status === "done" && j.result?.freedBytes > 0 ? j.result.freedBytes : 0), 0);
@@ -1087,20 +1238,22 @@ function renderJobs() {
 
 // ---------- guided flow ----------
 const DEEP = [["windows_update", { mode: "check", drivers: true }], ["app_updates", { mode: "list" }], ["disk_usage", {}], ["dism_check", {}], ["sfc_verify", {}], ["chkdsk_scan", { drive: "C" }], ["defender_scan", { type: "quick" }]];
-const isDeepJob = (j) => DEEP.some(([a, p]) => a === j.action && Object.entries(p).every(([k, v]) => String(j.params?.[k]) === String(v)));
+const DEEP_LINUX = [["updates_check", {}], ["disk_usage", {}]];
+const deepList = () => isLinux() ? DEEP_LINUX.concat((S.scan?.physicalDisks || []).filter(d => d.health && !/unknown/.test(d.health)).map(d => ["smart_test", { device: d.device }])) : DEEP;
+const isDeepJob = (j) => j.action === "smart_test" || DEEP.concat(DEEP_LINUX).some(([a, p]) => a === j.action && Object.entries(p).every(([k, v]) => String(j.params?.[k]) === String(v)));
 function deepResults() {
   const out = {};
-  for (const j of allJobs()) if (isDeepJob(j) && (j.status === "done" || j.status === "failed")) out[j.action] = { status: j.status, result: j.result, error: j.error };
+  for (const j of allJobs()) if (isDeepJob(j) && (j.status === "done" || j.status === "failed")) out[j.action === "smart_test" ? "smart_test " + j.params?.device : j.action] = { status: j.status, result: j.result, error: j.error };
   return out;
 }
 $("deepBtn").onclick = async () => {
   if (!S.scan) { toast("Run the normal scan first"); return; }
   const sec = S.scan.security || {}, otherAV = (sec.antivirusProducts || []).some(n => !/defender/i.test(n));
   let n = 0;
-  for (const [a, p] of DEEP) {
+  for (const [a, p] of deepList()) {
     if (a === "defender_scan" && (otherAV || sec.defenderEnabled === false)) continue;
     if (a === "app_updates" && !S.scan.updates?.wingetAvailable) continue;
-    if (S.jobs.some(j => isDeepJob(j) && j.action === a && (j.status === "queued" || j.status === "running"))) continue;
+    if (S.jobs.some(j => isDeepJob(j) && j.action === a && JSON.stringify(j.params || {}) === JSON.stringify(p) && (j.status === "queued" || j.status === "running"))) continue;
     try { await queue(a, p, "Deep check (read-only)"); n++; } catch (e) { toast(e.message); }
   }
   $("deepStatus").textContent = n ? `${n} check(s) queued — they run one after another. Watch them on the Fix tab.` : "Deep checks are already running.";

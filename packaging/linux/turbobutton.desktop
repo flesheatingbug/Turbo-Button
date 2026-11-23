@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Turbo Button
+Comment=Portable PC repair agent, paired with the Turbo Button phone app
+Exec=turbobutton
+Icon=turbobutton
+Terminal=true
+Categories=System;

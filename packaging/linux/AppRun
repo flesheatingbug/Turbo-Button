@@ -1,0 +1,20 @@
+#!/bin/sh
+# Turbo Button AppImage entry point. Double-clicked from a file manager there is no
+# terminal, so open one: the console shows the pairing QR code and the live log.
+HERE="$(dirname "$(readlink -f "$0")")"
+BIN="$HERE/usr/bin/turbobutton"
+if [ -t 1 ] || [ -n "$TURBO_NO_TERMINAL" ]; then
+  exec "$BIN" "$@"
+fi
+export TURBO_NO_TERMINAL=1
+for t in x-terminal-emulator konsole gnome-terminal kgx ptyxis xfce4-terminal mate-terminal lxterminal qterminal tilix terminator kitty alacritty foot wezterm xterm; do
+  command -v "$t" >/dev/null 2>&1 || continue
+  case "$t" in
+    gnome-terminal|kgx|ptyxis) exec "$t" -- "$BIN" "$@" ;;
+    konsole|xfce4-terminal|mate-terminal|lxterminal|qterminal|tilix|terminator|xterm|x-terminal-emulator) exec "$t" -e "$BIN" "$@" ;;
+    wezterm) exec "$t" start -- "$BIN" "$@" ;;
+    *) exec "$t" "$BIN" "$@" ;;
+  esac
+done
+# No terminal found: run anyway; the customer screen window still shows the QR code.
+exec "$BIN" "$@"

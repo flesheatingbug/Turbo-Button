@@ -30,6 +30,48 @@ jobs:
           name: TurboButton-windows
           path: TurboButton.exe
 
+  linux-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Build static binaries
+        working-directory: agent
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ../TurboButton-linux-x86_64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o ../TurboButton-linux-arm64 .
+          file ../TurboButton-linux-*
+      - name: Smoke test the real Linux scan
+        run: |
+          sudo TURBO_RESUME_DIR=/tmp/tbci ./TurboButton-linux-x86_64 --no-screen > agent.log 2>&1 &
+          sleep 3
+          TOK=$(grep -o '#t=[0-9a-f]*' agent.log | head -1 | cut -c4-)
+          curl -sf -H "X-Token: $TOK" http://127.0.0.1:47800/api/info | grep -q '"os":"linux"'
+          curl -sf -H "X-Token: $TOK" -X POST http://127.0.0.1:47800/api/scan > /dev/null
+          for i in $(seq 1 60); do sleep 2; curl -sf -H "X-Token: $TOK" http://127.0.0.1:47800/api/scan | grep -q '"latest":{' && break; done
+          curl -sf -H "X-Token: $TOK" http://127.0.0.1:47800/api/scan | python3 -c "import sys,json; d=json.load(sys.stdin)['latest']; print(d['system']['os'], '| sections:', len(d), '| errors:', d['errors']); assert d['system'] and d['volumes']"
+          curl -sf -H "X-Token: $TOK" -X POST http://127.0.0.1:47800/api/finish || true
+      - name: Build AppImage
+        run: |
+          mkdir -p AppDir/usr/bin
+          cp TurboButton-linux-x86_64 AppDir/usr/bin/turbobutton
+          cp packaging/linux/AppRun AppDir/AppRun && chmod +x AppDir/AppRun
+          cp packaging/linux/turbobutton.desktop AppDir/
+          cp agent/winres/icon.png AppDir/turbobutton.png && cp AppDir/turbobutton.png AppDir/.DirIcon
+          curl -sSfL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool --no-appstream AppDir TurboButton-x86_64.AppImage
+          ls -la TurboButton-x86_64.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TurboButton-linux
+          path: |
+            TurboButton-x86_64.AppImage
+            TurboButton-linux-x86_64
+            TurboButton-linux-arm64
+
   android-app:
     runs-on: ubuntu-latest
     steps:
@@ -62,7 +104,7 @@ jobs:
           path: TurboButton.apk
 
   publish:
-    needs: [windows-agent, android-app]
+    needs: [windows-agent, linux-agent, android-app]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -78,6 +120,6 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           gh release delete latest -R "$REPO" --yes --cleanup-tag || true
-          gh release create latest out/TurboButton.exe out/TurboButton.apk -R "$REPO" --prerelease \
+          gh release create latest out/TurboButton.exe out/TurboButton-x86_64.AppImage out/TurboButton-linux-x86_64 out/TurboButton-linux-arm64 out/TurboButton.apk -R "$REPO" --prerelease \
             --target "$GITHUB_SHA" --title "Latest build $(date -u '+%Y-%m-%d %H:%M') UTC" \
-            --notes "Automatic build of ${GITHUB_SHA::7}. Install TurboButton.apk on your phone; copy TurboButton.exe to a USB stick."
+            --notes "Automatic build of ${GITHUB_SHA::7}. Install TurboButton.apk on your phone; copy TurboButton.exe (Windows) and TurboButton-x86_64.AppImage (Linux) to a USB stick."

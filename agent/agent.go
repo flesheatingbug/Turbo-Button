@@ -30,7 +30,7 @@ var indexHTML []byte
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.8.1"
+const Version = "0.9.0"
 
 type Job struct {
 	ID       int             `json:"id"`
@@ -278,7 +278,19 @@ func (a *Agent) run(j *Job) {
 	}
 }
 
+// nativeRun handles scans and actions without PowerShell (set by the Linux build).
+var nativeRun func(ctx context.Context, name string, env map[string]string, onLine func(string)) (json.RawMessage, error)
+
 func (a *Agent) runScript(name string, env map[string]string, timeout time.Duration, onLine func(string)) (json.RawMessage, error) {
+	if nativeRun != nil && !mockMode() {
+		ctx, cancel := context.WithTimeout(a.ctx, timeout)
+		defer cancel()
+		res, err := nativeRun(ctx, name, env, onLine)
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("stopped after %v (time limit)", timeout)
+		}
+		return res, err
+	}
 	prelude, _ := scriptFS.ReadFile("scripts/_prelude.ps1")
 	body, err := scriptFS.ReadFile("scripts/" + name + ".ps1")
 	if err != nil {
@@ -437,7 +449,7 @@ func (a *Agent) Handler() http.Handler {
 		host, _ := os.Hostname()
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		writeJSON(w, map[string]any{"agent": "Turbo Button", "version": Version, "computer": host, "catalog": Catalog,
+		writeJSON(w, map[string]any{"agent": "Turbo Button", "version": Version, "computer": host, "catalog": activeCatalog(), "os": agentOS(),
 			"machineId": a.machineID, "resumed": a.resumed,
 			"autoRestorePoint": a.autoRestore, "restorePointDone": a.restoreTried, "startedAt": a.started,
 			"protectedServices": protectedServiceList(), "protectedAppPrefixes": protectedAppPrefixes})

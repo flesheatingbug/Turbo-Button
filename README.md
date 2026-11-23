@@ -1,8 +1,9 @@
 # Turbo Button
 
-AI-assisted Windows tune-ups for computer repair technicians. It has two parts:
+AI-assisted Windows and Linux tune-ups for computer repair technicians. It has two parts:
 
 - **`agent/`** – `TurboButton.exe`, a portable Windows agent written in Go with no dependencies. Run it on the customer's PC and it shows a QR code. Details are in `agent/README.md`.
+- The same agent also runs on **Linux** as `TurboButton-x86_64.AppImage` (see below).
 - **`android/`** – the Turbo Button companion app. It scans the QR code, keeps your AI keys encrypted in the Android Keystore, runs the session and saves every report on your phone.
 
 Both use the same control page, `agent/web/index.html`. The `.exe` serves it to phone browsers, and the app bundles it.
@@ -57,6 +58,23 @@ The report also has a **Basic report (no AI)** button. It builds the report from
 
 Connect as many PCs as you like: on the **PCs** tab, tap **Scan QR code** for each one. Every PC keeps running its own scan and fixes in the background, the list shows live status for each, and the name in the header switches between them. PCs, plans and report drafts are saved on the phone, so closing the app loses nothing; a PC that drops off the network shows "Not reachable" and reconnects by itself.
 
+## Linux PCs
+
+Download `TurboButton-x86_64.AppImage` from the same release (there are also plain `TurboButton-linux-x86_64` and `TurboButton-linux-arm64` binaries). It's one static file with nothing to install and works on any distro. Run it from a USB stick:
+
+```
+chmod +x TurboButton-x86_64.AppImage   # once
+./TurboButton-x86_64.AppImage
+```
+
+If you double-click it, it opens a terminal window for the QR code and log. It asks for the admin password through the desktop's normal prompt (pkexec), or sudo in a terminal. It then opens the customer screen in Chrome/Chromium/Brave/Edge if one is installed, as the logged-in user.
+
+- **Scan:** distro, kernel and package manager; drive SMART health (with smartmontools: reallocated, pending and uncorrectable sectors, NVMe wear and media errors, temperatures, power-on hours); disk space; failed services; slow boot units (`systemd-analyze`); kernel crashes, out-of-memory kills and disk I/O errors from the journal; app crash dumps; CPU, memory, swap and temperatures; battery wear; pending updates and when the system was last updated; autostart apps; Flatpak/Snap apps; firewall, SSH and services listening on the network; browser extensions, forced browser policies and the hosts file; Snapper/Timeshift snapshots.
+- **Fix:** Snapper/Timeshift snapshot before the first change; clean the package cache, journal, app caches, thumbnails, crash dumps, old temp files and Trash; remove orphaned packages and unused Flatpak runtimes; install all updates (pacman, apt, dnf or zypper, plus Flatpak and Snap) and firmware (fwupd); disable autostart apps (by a per-user override, so the system file is untouched); restart, enable or disable services; TRIM; SMART self-test; disk usage; DNS flush; hosts and browser-policy resets (backups go in `/var/lib/turbobutton/backups`); restart.
+- **Protected:** core systemd units, the display manager, NetworkManager, dbus, polkit, the firewall and AppArmor/SELinux can't be disabled.
+- The phone app detects a Linux PC and switches its Quick plan rules, AI instructions and deep checks (updates, disk usage, and a short SMART test per drive) to Linux.
+- Not on Linux yet: resuming automatically after a restart. Run it again after the restart and the app offers to continue the job.
+
 ## Resuming jobs
 
 - **After a restart that Turbo Button starts** (Restart the PC, Defender offline scan): it saves the session and reopens by itself when you log back in, with the same session key. The phone reconnects on its own, and the "before" scan and work log carry on. While the restart is pending it leaves three things on the PC: a copy of itself, a session file readable only by administrators, and a one-time logon task, all under `C:\ProgramData\TurboButton`. They're removed the moment it reopens, or when the session ends.
@@ -80,5 +98,8 @@ The phone and the PC window use a retro green-phosphor terminal style by default
 In the app, all network traffic goes through Android directly rather than through the page. So local AI servers don't need any browser access (CORS) settings, and the agent's plain-HTTP connection on the local network works normally.
 
 ## Not yet tested
+
+The Linux agent was tested for real on Ubuntu 24.04 (scan, clean-ups, autostart, deep checks, Quick plan), and CI runs a real scan on every build. It hasn't yet been tried on a desktop with a graphical login, or on Arch, Fedora or openSUSE.
+
 
 Version 0.1 was built and tested in a simulated setup: the agent runs with fake Windows results, and the control page is tested in Chrome with a stand-in for the Android bridge. It has not yet been run on real Windows or a real Android phone, so try both on your own devices first.
