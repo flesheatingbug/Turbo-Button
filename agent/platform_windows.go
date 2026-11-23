@@ -210,3 +210,6 @@ func showConsole() {
 		syscall.NewLazyDLL("user32.dll").NewProc("ShowWindow").Call(h, 5) // SW_SHOW
 	}
 }
+
+// desktopAlert: on Windows the console window always shows errors.
+func desktopAlert(msg string) {}

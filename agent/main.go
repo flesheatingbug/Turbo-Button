@@ -21,6 +21,10 @@ func main() {
 		fmt.Println("Turbo Button needs administrator rights. Asking Windows to restart it as administrator...")
 		if err := relaunchAsAdmin(); err != nil {
 			fmt.Println("Could not get administrator rights:", err)
+			if hasArg("--gui") {
+				desktopAlert("Turbo Button needs administrator rights to service this PC: " + err.Error() + ".")
+				return
+			}
 			waitEnter()
 		}
 		return
@@ -29,6 +33,10 @@ func main() {
 	a, err := NewAgent()
 	if err != nil {
 		fmt.Println("Startup failed:", err)
+		if hasArg("--gui") {
+			desktopAlert("Turbo Button couldn't start: " + err.Error())
+			return
+		}
 		waitEnter()
 		return
 	}
@@ -114,6 +122,12 @@ func main() {
 					go a.screenWatchdog()
 				}
 			}
+		} else if hasArg("--gui") {
+			// Started without a terminal: with no screen there'd be no QR code anywhere.
+			desktopAlert("Turbo Button couldn't open its screen (" + err.Error() + "). Install Chromium, Chrome, Brave or Vivaldi, or run it from a terminal with --console.")
+			srv.Close()
+			cleanup(false)
+			return
 		}
 	}
 	if a.resumed {

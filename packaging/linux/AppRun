@@ -1,10 +1,19 @@
 #!/bin/sh
-# Turbo Button AppImage entry point. Double-clicked from a file manager there is no
-# terminal, so open one: the console shows the pairing QR code and the live log.
+# Turbo Button AppImage entry point.
+#  - From a terminal: runs right there (QR code and live log in the terminal).
+#  - Double-clicked on a desktop: no terminal at all. The desktop's own password prompt
+#    (pkexec) asks for admin rights, and the customer screen shows the QR code and progress.
+#    Closing the customer screen ends the session.
+#  - --console, or no graphical password prompt available: opens a terminal for it.
 HERE="$(dirname "$(readlink -f "$0")")"
 BIN="$HERE/usr/bin/turbobutton"
 if [ -t 1 ] || [ -n "$TURBO_NO_TERMINAL" ]; then
   exec "$BIN" "$@"
+fi
+want_console=""
+for a in "$@"; do [ "$a" = "--console" ] && want_console=1; done
+if [ -z "$want_console" ] && { [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; } && command -v pkexec >/dev/null 2>&1; then
+  exec "$BIN" --gui "$@"
 fi
 export TURBO_NO_TERMINAL=1
 for t in x-terminal-emulator konsole gnome-terminal kgx ptyxis xfce4-terminal mate-terminal lxterminal qterminal tilix terminator kitty alacritty foot wezterm xterm; do
@@ -16,5 +25,4 @@ for t in x-terminal-emulator konsole gnome-terminal kgx ptyxis xfce4-terminal ma
     *) exec "$t" "$BIN" "$@" ;;
   esac
 done
-# No terminal found: run anyway; the customer screen window still shows the QR code.
-exec "$BIN" "$@"
+exec "$BIN" --gui "$@"

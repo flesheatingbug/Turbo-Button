@@ -39,4 +39,5 @@ func machineID() string {
 func openScreen(url, workDir string) error { return fmt.Errorf("customer screen is Windows-only") }
 func closeScreen(string)                   {}
 func hideConsole() bool                    { return false }
+func desktopAlert(msg string)              {}
 func showConsole()                         {}

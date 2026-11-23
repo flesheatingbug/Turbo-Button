@@ -139,11 +139,13 @@ Copy these to the stick:
 
 **Windows:** double-click `TurboButton.exe` and say **Yes** to the admin prompt.
 
-**Linux:** mark it executable once, then run it. Double-clicking works too: it opens a terminal and asks for the admin password.
+**Linux:** mark it executable once (right-click → Properties → Permissions → *Is executable*, or `chmod +x`), then double-click it. The desktop's normal password prompt asks for admin rights, and the customer screen opens with the QR code. There's no terminal to keep open: **closing the customer screen ends the session**.
+
+From a terminal it runs right there, with the QR code and live log in the terminal:
 
 ```bash
 chmod +x TurboButton-x86_64.AppImage
-./TurboButton-x86_64.AppImage
+./TurboButton-x86_64.AppImage            # or add --console to keep the log in a terminal window
 ```
 
 The phone and the PC need to be on the **same network** (Wi-Fi or LAN).
@@ -158,7 +160,7 @@ In the app, tap **Scan QR code** and point it at the PC's screen. The scan start
 | Option | What it does |
 |---|---|
 | `--no-screen` | Don't open the customer screen. The QR code and log stay in the console. |
-| `--console` | Keep the console window visible alongside the customer screen. |
+| `--console` | Keep the console window visible alongside the customer screen. On Linux, a double-clicked AppImage opens a terminal for it. |
 
 </details>
 
@@ -263,7 +265,7 @@ On the **PCs** tab, tap **Scan QR code** for each PC. Each one keeps working in 
 <details>
 <summary><b>🖥 The customer screen</b></summary>
 
-A full-window view on the PC in the same retro style. It shows the QR code until you connect, then what's being done and why, a progress bar, completed fixes, space freed, elapsed time, and a "please don't turn off" warning while work runs. The QR code stays up so you can reconnect, or add the PC from another phone. **Closing it ends the session** (except during a restart Turbo Button started). It needs Edge or Chrome, or Chromium, Brave or Vivaldi on Linux; without one, the console stays visible instead.
+A full-window view on the PC in the same retro style. It shows the QR code until you connect, then what's being done and why, a progress bar, completed fixes, space freed, elapsed time, and a "please don't turn off" warning while work runs. The QR code stays up so you can reconnect, or add the PC from another phone. **Closing it ends the session** (except during a restart Turbo Button started). It needs Edge or Chrome on Windows (the console stays visible without one). On Linux it uses Chromium, Chrome, Brave, Edge or Vivaldi in an app-style window, or a tab in the default browser. If no screen can be opened when the AppImage was double-clicked, it shows an error and closes rather than running invisibly.
 
 </details>
 
@@ -352,6 +354,20 @@ If the installed app was signed with a different key (builds from before the per
 </details>
 
 <details>
+<summary><b>Linux: "Program crashed" in a terminal (builds before 0.9.2)</b></summary>
+
+Older builds opened a terminal when double-clicked, and closing that terminal or pressing Ctrl+C killed the launcher. Update to the latest AppImage: it doesn't need a terminal, and Ctrl+C or closing one now ends the session cleanly.
+
+</details>
+
+<details>
+<summary><b>Linux: nothing happens after the password prompt</b></summary>
+
+Run it from a terminal (`./TurboButton-x86_64.AppImage`) to see the log. If the AppImage won't start at all, your distro may be missing FUSE 2: install `fuse2` (Arch/CachyOS) or `libfuse2` (Debian/Ubuntu), or use the plain `TurboButton-linux-x86_64` binary instead.
+
+</details>
+
+<details>
 <summary><b>Linux: drive health says "unknown"</b></summary>
 
 Install `smartmontools` (`pacman -S smartmontools`, `apt install smartmontools`, and so on) and rescan.
@@ -361,5 +377,5 @@ Install `smartmontools` (`pacman -S smartmontools`, `apt install smartmontools`,
 ---
 
 <div align="center">
-<sub>Tested so far: the Linux agent on Ubuntu and CachyOS, the Android app on a real phone, and the Windows agent in a simulated setup. Please report anything odd on real Windows PCs.</sub>
+<sub>Tested so far: the Linux agent on Ubuntu and CachyOS (KDE), the Android app on a real phone, and the Windows agent in a simulated setup. Please report anything odd on real Windows PCs.</sub>
 </div>

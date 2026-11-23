@@ -187,6 +187,32 @@ func openScreen(url, workDir string) error {
 	return fmt.Errorf("no browser found")
 }
 
+// desktopAlert shows an error on the desktop. Used when Turbo Button runs without a terminal (--gui),
+// where printed messages would go nowhere.
+func desktopAlert(msg string) {
+	var env []string
+	var pre []string
+	if os.Geteuid() == 0 {
+		g := desktopUser()
+		if g == nil || !have("runuser") {
+			return
+		}
+		pre = append([]string{"runuser", "-u", g.name, "--", "env", "HOME=" + homeOf(g.name)}, g.env...)
+	}
+	try := func(args ...string) bool {
+		full := append(append([]string{}, pre...), args...)
+		c := exec.Command(full[0], full[1:]...)
+		c.Env = append(os.Environ(), env...)
+		return c.Run() == nil
+	}
+	switch {
+	case have("kdialog") && try("kdialog", "--title", "Turbo Button", "--error", msg):
+	case have("zenity") && try("zenity", "--error", "--title=Turbo Button", "--text="+msg):
+	case have("notify-send"):
+		try("notify-send", "-u", "critical", "Turbo Button", msg)
+	}
+}
+
 func closeScreen(workDir string) {
 	if mockMode() {
 		return
