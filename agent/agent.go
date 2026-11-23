@@ -30,7 +30,7 @@ var indexHTML []byte
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.9.1"
+const Version = "0.9.2"
 
 type Job struct {
 	ID       int             `json:"id"`
@@ -407,7 +407,7 @@ func (a *Agent) Handler() http.Handler {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		host, _ := os.Hostname()
+		host := hostName()
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		a.screenSeen, a.screenClosed = time.Now(), time.Time{}
@@ -446,7 +446,7 @@ func (a *Agent) Handler() http.Handler {
 		}()
 	})
 	mux.HandleFunc("GET /api/info", a.authed(func(w http.ResponseWriter, r *http.Request) {
-		host, _ := os.Hostname()
+		host := hostName()
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		writeJSON(w, map[string]any{"agent": "Turbo Button", "version": Version, "computer": host, "catalog": activeCatalog(), "os": agentOS(),
@@ -547,3 +547,12 @@ func protectedServiceList() []string {
 }
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
+
+// hostName is the PC's name; the simulated agent uses TURBO_MOCK_NAME for demos.
+func hostName() string {
+	if n := os.Getenv("TURBO_MOCK_NAME"); n != "" && mockMode() {
+		return n
+	}
+	h, _ := os.Hostname()
+	return h
+}

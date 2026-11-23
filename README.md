@@ -1,99 +1,365 @@
-# Turbo Button
+<div align="center">
 
-AI-assisted Windows and Linux tune-ups for computer repair technicians. It has two parts:
+# ▌TURBO BUTTON
 
-- **`agent/`** – `TurboButton.exe`, a portable Windows agent written in Go with no dependencies. Run it on the customer's PC and it shows a QR code. Details are in `agent/README.md`.
-- The same agent also runs on **Linux** as `TurboButton-x86_64.AppImage` (see below).
-- **`android/`** – the Turbo Button companion app. It scans the QR code, keeps your AI keys encrypted in the Android Keystore, runs the session and saves every report on your phone.
+**Press the button. Fix the PC.**
 
-Both use the same control page, `agent/web/index.html`. The `.exe` serves it to phone browsers, and the app bundles it.
+A portable repair agent for computer technicians. Run it on the customer's PC from a USB stick, scan the QR code with your phone, and work through the scan, the plan and the fixes with an AI (or without one). You approve every change, and it cleans up after itself when you're done.
 
-## What it can do (v0.3)
+[![Build](https://github.com/flesheatingbug/Turbo-Button/actions/workflows/build.yml/badge.svg)](https://github.com/flesheatingbug/Turbo-Button/actions/workflows/build.yml)
+![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-33ff66?style=flat-square&labelColor=020b05)
+![Linux](https://img.shields.io/badge/Linux-any%20distro-33ff66?style=flat-square&labelColor=020b05)
+![Android](https://img.shields.io/badge/Android-8%2B-33ff66?style=flat-square&labelColor=020b05)
+![No install](https://img.shields.io/badge/install-none-33ff66?style=flat-square&labelColor=020b05)
 
-- **Scan:** hardware and drive health, startup speed and what's slowing it, blue screens with likely causes, CPU and memory pressure, temperatures, junk files, startup apps, bloat, installed programs, security status, update status, and browser/network hijacks (search engine, extensions, forced policies, proxy, DNS, hosts file).
-- **Fix:** clean-ups, startup and bloat removal, privacy and ad tweaks, uninstalling junk programs, Windows Update (including drivers), updating all programs (winget), resetting adware hijacks (proxy, DNS, hosts, browser policies), resetting Windows Update, the network stack, the Store and the search index, SFC/DISM, CHKDSK, memory tests, Defender scans (including offline), and a restart at the end.
-- **The PC window shows a live activity log**, so the customer can see what's being done.
-- **Safety:** every change needs approval on the phone, and a restore point is created first. Drivers, runtimes, Office and security software can't be uninstalled. Proxy, DNS and policy resets are never proposed on business (domain) PCs. Backups of the hosts file and browser policies go to `C:\ProgramData\TurboButton\backups`.
+<img src="docs/media/hero.png" alt="The customer screen on the PC and the Turbo Button app on a phone, mid-repair" width="900">
 
-## Getting the APK and EXE (no Android Studio needed)
+### ⬇ Downloads
 
-1. Create a **private** GitHub repo and push this folder to it.
-2. GitHub Actions builds both on every push. When the build succeeds they're published to the repo's **Releases → "Latest build"** page as `TurboButton.apk` and `TurboButton.exe`. You can open that page straight from your phone's browser while signed in to GitHub.
-3. Install the APK on your phone. You'll need to allow installs from your browser or file manager when prompted.
+[**TurboButton.apk**](https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton.apk) (phone) ·
+[**TurboButton.exe**](https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton.exe) (Windows) ·
+[**TurboButton-x86_64.AppImage**](https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton-x86_64.AppImage) (Linux)
 
-### Signing key and in-app updates
+<sub>All files: <a href="https://github.com/flesheatingbug/Turbo-Button/releases/tag/latest">Latest build</a> · rebuilt automatically on every change</sub>
 
-The signing key is kept encrypted in the repo (`android/app/turbobutton.keystore.enc`), the same way mbrowser does it. Add its passphrase once as a repository secret under **Settings → Secrets and variables → Actions**, named `TURBO_KEYSTORE_PASS`. Every build is then signed with the same key and installs over the previous one.
+</div>
 
-The app updates itself from the "Latest build" release. It checks when it opens (at most every 6 hours) and twice a day in the background, with a notification. It asks before downloading, then hands the APK to Android's installer. You can turn the automatic check off, or check by hand, under **⚙ → App updates**. The first time, Android asks you to allow Turbo Button to install apps.
+---
 
-If you're moving from a build signed with a throwaway key, uninstall the old app once and install the new build. The updater detects a key mismatch and tells you so, rather than failing.
+## Contents
 
-### Building locally instead
+- [How it works](#how-it-works)
+- [See it in action](#see-it-in-action)
+- [Quick start](#quick-start)
+- [What it checks and fixes](#what-it-checks-and-fixes)
+- [AI options (free ones too)](#ai-options-free-ones-too)
+- [Safety](#safety)
+- [Handy extras](#handy-extras)
+- [Building it yourself](#building-it-yourself)
+- [Troubleshooting](#troubleshooting)
 
-- **Android Studio:** open the `android/` folder and use Run, or Build → Build APK.
-- **Command line, with the Android SDK installed:** `cd android && ./gradlew assembleRelease`
-- **The EXE:** `cd agent && GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o TurboButton.exe .`
+---
 
-## AI options (you don't need to pay)
+## How it works
 
-| Option | Cost | Privacy | Set up |
-|---|---|---|---|
-| **Quick plan** button | Free, offline | Nothing leaves the phone | Nothing — built-in rules |
-| **Send to AI app** (Plan/Report tabs) | Uses the Claude/ChatGPT plan you already have | Goes to your AI app | Opens the share sheet: pick Claude or ChatGPT and send (the scan goes as a file, the instruction as your message). On the AI's reply tap **Share → Turbo Button**. In a phone browser it's copy/paste instead. |
-| **Ollama** on your own PC/server | Free | Stays on your hardware | Provider → Ollama, base `http://<server>:11434`, model e.g. `qwen3.5:9b`. Away from home, reach it via Tailscale/WireGuard. The app forces Ollama to reply in the exact JSON shape. |
-| **Google Gemini** free tier | Free (rate-limited) | Weaker free-tier data terms | Key from aistudio.google.com/apikey |
-| **OpenRouter** free models | Free (about 50 requests/day) | Free endpoints may log | Key from openrouter.ai, model `openrouter/free` |
-| **Claude API** | Paid per use | Anthropic API terms | Key from platform.claude.com |
-
-The report also has a **Basic report (no AI)** button. It builds the report from the work log plus the Quick-plan findings.
-
-## Multiple PCs (app only)
-
-Connect as many PCs as you like: on the **PCs** tab, tap **Scan QR code** for each one. Every PC keeps running its own scan and fixes in the background, the list shows live status for each, and the name in the header switches between them. PCs, plans and report drafts are saved on the phone, so closing the app loses nothing; a PC that drops off the network shows "Not reachable" and reconnects by itself.
-
-## Linux PCs
-
-Download `TurboButton-x86_64.AppImage` from the same release (there are also plain `TurboButton-linux-x86_64` and `TurboButton-linux-arm64` binaries). It's one static file with nothing to install and works on any distro. Run it from a USB stick:
-
+```mermaid
+flowchart LR
+    subgraph PC["Customer's PC — nothing installed"]
+        A["TurboButton.exe / AppImage<br/>(run from USB)"]
+        S["Customer screen<br/>live progress + QR"]
+        A --- S
+    end
+    subgraph Phone["Your phone"]
+        P["Turbo Button app<br/>AI keys stay here"]
+    end
+    AI["AI of your choice<br/>Claude · ChatGPT · Gemini · Ollama<br/>or built-in rules"]
+    P -- "QR pairing · Wi-Fi<br/>token-protected" --> A
+    P <-- "scan data → plan" --> AI
 ```
-chmod +x TurboButton-x86_64.AppImage   # once
+
+1. **Run** the agent on the customer's PC. It asks for admin rights, shows a QR code and opens a full-screen customer view.
+2. **Scan** the QR code with the app. The PC scans itself automatically (read-only).
+3. **Plan.** Tap **Quick plan** (built-in rules, no AI), or send the scan to an AI. You get findings and a list of proposed fixes.
+4. **Fix.** Tick the fixes you approve and press Run. A restore point is made first, and the customer watches each step on their screen.
+5. **Report.** Rescan for the before → after numbers, write the report (AI or basic) and share it.
+6. **End.** The agent closes and removes everything it put on the PC.
+
+Your AI keys never touch the customer's PC: they live encrypted on your phone.
+
+---
+
+## See it in action
+
+<table>
+<tr>
+<td align="center" width="38%">
+<img src="docs/media/demo-phone.gif" alt="Phone: connect, scan, quick plan, approve fixes, watch them run, write the report" width="300"><br>
+<sub><b>On your phone:</b> connect → scan → Quick plan → approve → fix → report</sub>
+</td>
+<td align="center">
+<img src="docs/media/demo-screen.gif" alt="Customer screen: waiting for the technician, then servicing the PC step by step" width="560"><br>
+<sub><b>On the customer's PC:</b> what's being done and why, live</sub>
+</td>
+</tr>
+</table>
+
+<details open>
+<summary><b>Screenshots</b></summary>
+<br>
+
+| Connect | Scan | Plan |
+|:---:|:---:|:---:|
+| <img src="docs/media/phone-connect.png" width="250"> | <img src="docs/media/phone-scan.png" width="250"> | <img src="docs/media/phone-plan2.png" width="250"> |
+| Scan the QR code on the PC. Connect as many PCs as you like. | Hardware, health, security, junk, startup, hijacks… | Findings plus proposed fixes. Tick what you approve. |
+
+| Fix | Before → After | Report |
+|:---:|:---:|:---:|
+| <img src="docs/media/phone-fix.png" width="250"> | <img src="docs/media/phone-beforeafter.png" width="250"> | <img src="docs/media/phone-report2.png" width="250"> |
+| Jobs run one after another. Cancel any that haven't started. | Proof of the work for the customer. | Saved on the phone. Share it by email, WhatsApp, Drive… |
+
+**The customer screen**
+
+| Waiting for you | Working | Done |
+|:---:|:---:|:---:|
+| <img src="docs/media/screen-waiting.png" width="300"> | <img src="docs/media/screen-working.png" width="300"> | <img src="docs/media/screen-done.png" width="300"> |
+
+**Three looks** (⚙ → Look)
+
+| Green phosphor | Amber | Modern |
+|:---:|:---:|:---:|
+| <img src="docs/media/theme-green.png" width="220"> | <img src="docs/media/theme-amber.png" width="220"> | <img src="docs/media/theme-modern.png" width="220"> |
+
+**The agent's console** (hidden once the customer screen opens)
+
+<img src="docs/media/console.png" width="480">
+
+</details>
+
+<sub>Screenshots use the built-in demo mode with made-up data. No real customer was harmed.</sub>
+
+---
+
+## Quick start
+
+### 1. Get the app on your phone
+
+1. On your phone, download [**TurboButton.apk**](https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton.apk) and open it. Allow installs from your browser when Android asks.
+2. Open Turbo Button. The **⚙** screen is where you pick an AI, if you want one (see [AI options](#ai-options-free-ones-too)). Quick plan works with no setup at all.
+
+After that the app keeps itself up to date (see [App updates](#app-updates)).
+
+### 2. Put the agent on a USB stick
+
+Copy these to the stick:
+
+- [**TurboButton.exe**](https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton.exe) for Windows 10/11
+- [**TurboButton-x86_64.AppImage**](https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton-x86_64.AppImage) for Linux (any distro, 64-bit Intel/AMD). There are also plain [x86_64](https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton-linux-x86_64) and [arm64](https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton-linux-arm64) binaries.
+
+### 3. On the customer's PC
+
+**Windows:** double-click `TurboButton.exe` and say **Yes** to the admin prompt.
+
+**Linux:** mark it executable once, then run it. Double-clicking works too: it opens a terminal and asks for the admin password.
+
+```bash
+chmod +x TurboButton-x86_64.AppImage
 ./TurboButton-x86_64.AppImage
 ```
 
-If you double-click it, it opens a terminal window for the QR code and log. It asks for the admin password through the desktop's normal prompt (pkexec), or sudo in a terminal. It then opens the customer screen in Chrome/Chromium/Brave/Edge if one is installed, as the logged-in user.
+The phone and the PC need to be on the **same network** (Wi-Fi or LAN).
 
-- **Scan:** distro, kernel and package manager; drive SMART health (with smartmontools: reallocated, pending and uncorrectable sectors, NVMe wear and media errors, temperatures, power-on hours); disk space; failed services; slow boot units (`systemd-analyze`); kernel crashes, out-of-memory kills and disk I/O errors from the journal; app crash dumps; CPU, memory, swap and temperatures; battery wear; pending updates and when the system was last updated; autostart apps; Flatpak/Snap apps; firewall, SSH and services listening on the network; browser extensions, forced browser policies and the hosts file; Snapper/Timeshift snapshots.
-- **Fix:** Snapper/Timeshift snapshot before the first change; clean the package cache, journal, app caches, thumbnails, crash dumps, old temp files and Trash; remove orphaned packages and unused Flatpak runtimes; install all updates (pacman, apt, dnf or zypper, plus Flatpak and Snap) and firmware (fwupd); disable autostart apps (by a per-user override, so the system file is untouched); restart, enable or disable services; TRIM; SMART self-test; disk usage; DNS flush; hosts and browser-policy resets (backups go in `/var/lib/turbobutton/backups`); restart.
-- **Protected:** core systemd units, the display manager, NetworkManager, dbus, polkit, the firewall and AppArmor/SELinux can't be disabled.
-- The phone app detects a Linux PC and switches its Quick plan rules, AI instructions and deep checks (updates, disk usage, and a short SMART test per drive) to Linux.
-- Not on Linux yet: resuming automatically after a restart. Run it again after the restart and the app offers to continue the job.
+### 4. Pair and go
 
-## Resuming jobs
+In the app, tap **Scan QR code** and point it at the PC's screen. The scan starts by itself. Follow the step bar at the top: **Scan → Plan → Fix → Report → End**.
 
-- **After a restart that Turbo Button starts** (Restart the PC, Defender offline scan): it saves the session and reopens by itself when you log back in, with the same session key. The phone reconnects on its own, and the "before" scan and work log carry on. While the restart is pending it leaves three things on the PC: a copy of itself, a session file readable only by administrators, and a one-time logon task, all under `C:\ProgramData\TurboButton`. They're removed the moment it reopens, or when the session ends.
-- **Coming back later** (agent closed, a restart you didn't start, the next day): run TurboButton.exe again and scan the new QR code. The app recognises the PC by its Windows machine ID and offers to continue the previous job, keeping the first visit's "before" scan, the plan, the work log and the report details. Unfinished jobs are kept on the phone for 14 days. Pressing **End** marks the job finished.
+<details>
+<summary>Command-line options</summary>
 
-## Customer screen on the PC
+| Option | What it does |
+|---|---|
+| `--no-screen` | Don't open the customer screen. The QR code and log stay in the console. |
+| `--console` | Keep the console window visible alongside the customer screen. |
 
-When the agent starts, it also opens a full-window **customer screen** in an app-style Edge (or Chrome) window. It uses the same retro terminal look as the app and shows the QR code until the phone connects, then what's being done and why (with a progress bar), completed fixes, space freed, elapsed time and a "please don't turn off" warning while work runs. It only accepts connections from the PC itself and is read-only. The QR code stays on screen so the phone can reconnect, or another phone can add the PC. Once the screen is up, the console window hides itself. **Closing the screen ends the session** (Windows asks first if work is still running). The exception is while Turbo Button is restarting the PC: then it's ignored, so the session can resume. If neither Edge nor Chrome is installed, the console stays visible as before. Use `--no-screen` to skip the screen, or `--console` to keep the console visible.
+</details>
 
-## Look
+---
 
-The phone and the PC window use a retro green-phosphor terminal style by default. You can switch to amber or the modern look under ⚙ → Look.
+## What it checks and fixes
 
-## Using the app
+<details open>
+<summary><b>🪟 Windows</b></summary>
 
-1. Tap **⚙** and choose a provider (Claude, OpenAI, OpenRouter, LM Studio or Ollama), then enter the model and key. They're saved encrypted on the phone and work for every customer.
-2. Run `TurboButton.exe` on the customer's PC, tap **Scan QR code** and point the phone at the console window.
-3. Work through **Scan → Plan** (tick the actions you approve, then Run) **→ Work → Report**. The report is saved automatically. Use **Share** to email it or send it on WhatsApp, Drive and so on.
-4. **End** closes the agent on the PC, then **Connect to the next PC** starts a new session.
+**Scan:** hardware and drive health (SMART, SSD wear, temperature), startup speed and what's slowing it down, blue screens with their likely cause, CPU and memory pressure, temperatures, junk files, startup apps, scheduled tasks, preinstalled bloat, installed programs, antivirus and Defender status, Windows Update status, restore points, problem devices, battery wear, and browser and network hijacks (search engine, extensions, forced policies, proxy, DNS, hosts file).
 
-In the app, all network traffic goes through Android directly rather than through the page. So local AI servers don't need any browser access (CORS) settings, and the agent's plain-HTTP connection on the local network works normally.
+**Optional deep checks** (read-only, 10–30 min): pending Windows and driver updates, outdated programs (winget), system-file and Windows-image corruption (SFC/DISM verify), file-system errors (CHKDSK online), a Defender quick scan, and what's filling the disk.
 
-## Not yet tested
+**Fixes:**
 
-The Linux agent was tested for real on Ubuntu 24.04 (scan, clean-ups, autostart, deep checks, Quick plan), and CI runs a real scan on every build. It hasn't yet been tried on a desktop with a graphical login, or on Arch, Fedora or openSUSE.
+| Area | Actions |
+|---|---|
+| Space | Temp files, update cache, delivery optimisation, crash dumps, browser caches, thumbnails, Recycle Bin, DISM component clean-up, hibernation |
+| Speed | Startup apps, scheduled tasks, services, power plan, Fast Startup, TRIM/defrag |
+| Junk | Remove preinstalled Store apps, uninstall trialware and "optimizer" programs |
+| Privacy | Advertising ID, Start menu ads and suggestions, tailored experiences, Bing in Start, lock-screen tips, minimum telemetry |
+| Repair | SFC, DISM RestoreHealth, CHKDSK (scheduled), memory test, reset Windows Update, network stack, Store, search index |
+| Adware | Reset proxy, DNS and hosts; remove forced browser policies |
+| Security | Defender definitions update, quick/full/offline scan |
+| Updates | Windows Update (optionally with drivers), update all programs via winget |
+| Finish | Restart with a countdown (or cancel it) |
 
+</details>
 
-Version 0.1 was built and tested in a simulated setup: the agent runs with fake Windows results, and the control page is tested in Chrome with a stand-in for the Android bridge. It has not yet been run on real Windows or a real Android phone, so try both on your own devices first.
+<details>
+<summary><b>🐧 Linux</b></summary>
+
+**Scan:** distro, kernel, desktop and package manager; drive SMART health (with smartmontools: reallocated, pending and uncorrectable sectors, NVMe wear and media errors, temperature, power-on hours); disk space; failed services; slow boot units (`systemd-analyze blame`); kernel crashes, out-of-memory kills and disk I/O errors from the journal; app crash dumps; CPU, memory, swap and temperatures; battery wear; pending updates and the last update date; autostart apps; Flatpak/Snap apps; firewall, SSH and services listening on the network; browser extensions, forced browser policies and the hosts file; Snapper/Timeshift snapshots.
+
+**Deep checks:** pending package, Flatpak and firmware updates; disk usage; a short SMART self-test on each drive.
+
+**Fixes:**
+
+| Area | Actions |
+|---|---|
+| Safety | Snapper/Timeshift snapshot before the first change |
+| Space | Package cache, journal (keeps 4 weeks/200 MB), app caches, thumbnails, crash dumps, old temp files, Trash, orphaned packages, unused Flatpak runtimes |
+| Updates | pacman, apt, dnf or zypper, plus Flatpak, Snap and firmware (fwupd) |
+| Speed | Disable autostart apps (by a per-user override, so the system file is untouched); restart, enable or disable services; TRIM |
+| Health | SMART self-test, clear failed-service markers |
+| Adware | Reset the hosts file, remove forced browser policies (backups go in `/var/lib/turbobutton/backups`) |
+| Finish | DNS flush, restart with a countdown |
+
+The app spots a Linux PC by itself and switches to Linux rules, AI instructions and deep checks.
+
+</details>
+
+---
+
+## AI options (free ones too)
+
+Choose under **⚙ → AI**. Every option is optional.
+
+| Option | Cost | Privacy | Set up |
+|---|---|---|---|
+| ⚡ **Quick plan** | Free, offline | Nothing leaves the phone | Nothing: built-in rules |
+| 📤 **Send to your AI app** | The Claude/ChatGPT plan you already have | Goes to your AI app | Tap the button, pick Claude or ChatGPT in the share sheet and send. On the reply, tap **Share → Turbo Button**. |
+| 🏠 **Ollama** on your own server | Free | Stays on your hardware | Base `http://<server>:11434`, a model such as `qwen3.5:9b`. Away from home, reach it with Tailscale or WireGuard. |
+| ✨ **Google Gemini** | Free tier (rate-limited) | Weaker free-tier data terms | Key from aistudio.google.com/apikey |
+| 🔀 **OpenRouter** free models | Free (about 50 requests/day) | Free endpoints may log | Key from openrouter.ai, model `openrouter/free` |
+| 🧠 **Claude / OpenAI API** | Pay per use | Provider's API terms | Key from the provider's console |
+
+The report also has a **Basic report (no AI)** button. It builds the report from the work log and the Quick plan findings.
+
+---
+
+## Safety
+
+- ✅ **Nothing happens without you.** Every change is approved on the phone, and anything risky is marked "ask the customer".
+- 🛟 **Undo point first.** A restore point (Windows) or snapshot (Linux, if one is set up) is made before the first change.
+- 🛡 **Security is never weakened.** It won't touch Defender, the firewall, Windows Update, UAC, core services or (on Linux) systemd, the display manager, NetworkManager, polkit or AppArmor/SELinux. Drivers, runtimes, Office and security software can't be uninstalled.
+- 🏢 **Business PCs are left alone.** Proxy, DNS and browser-policy resets are never proposed on domain-joined PCs.
+- 💾 **Backups.** The hosts file and browser policies are backed up before they're reset.
+- 🔐 **Locked to your phone.** The agent only accepts requests carrying the session key from the QR code. The customer screen only answers the PC itself.
+- 🧹 **Leaves no trace.** When the session ends, the agent closes its firewall rule and deletes its temporary files.
+
+---
+
+## Handy extras
+
+<details>
+<summary><b>📱 Several PCs at once</b></summary>
+
+On the **PCs** tab, tap **Scan QR code** for each PC. Each one keeps working in the background, the list shows live status, and the name in the header switches between them. Everything is saved on the phone, so closing the app loses nothing, and a PC that drops off the network reconnects by itself.
+
+</details>
+
+<details>
+<summary><b>🔁 Restarts and coming back later</b></summary>
+
+- **Restarts that Turbo Button starts** (Windows): it saves the session and reopens by itself after you log back in. The phone reconnects, and the before scan and work log carry on. The few files it needs while the restart is pending live in `C:\ProgramData\TurboButton` and are removed when it reopens.
+- **Coming back later** (the next day, or after a restart you didn't start): run the agent again and scan the new QR code. The app recognises the PC and offers to continue the job, with the original before scan, plan, work log and report details. Unfinished jobs are kept for 14 days.
+
+</details>
+
+<details>
+<summary><b>🖥 The customer screen</b></summary>
+
+A full-window view on the PC in the same retro style. It shows the QR code until you connect, then what's being done and why, a progress bar, completed fixes, space freed, elapsed time, and a "please don't turn off" warning while work runs. The QR code stays up so you can reconnect, or add the PC from another phone. **Closing it ends the session** (except during a restart Turbo Button started). It needs Edge or Chrome, or Chromium, Brave or Vivaldi on Linux; without one, the console stays visible instead.
+
+</details>
+
+<details id="app-updates">
+<summary><b>⬆ App updates</b></summary>
+
+The app checks the [Latest build](https://github.com/flesheatingbug/Turbo-Button/releases/tag/latest) when it opens (at most every 6 hours) and twice a day in the background, with a notification. It asks before downloading, then hands the APK to Android's installer. Turn it off or check by hand under **⚙ → App updates**. The first time, Android asks you to allow Turbo Button to install apps.
+
+</details>
+
+---
+
+## Building it yourself
+
+Every push to `main` is built by GitHub Actions. The build vets and tests the code, runs a real Linux scan, then publishes the APK, EXE, AppImage and Linux binaries to the **Latest build** release.
+
+<details>
+<summary><b>Signing key (for in-app updates)</b></summary>
+
+The Android signing key is stored encrypted in the repo (`android/app/turbobutton.keystore.enc`). Add its passphrase once as a repository secret named `TURBO_KEYSTORE_PASS` (**Settings → Secrets and variables → Actions**). Every build is then signed with the same key, so updates install over each other. Without the secret, builds are signed with a throwaway key, and the app warns you instead of failing to install.
+
+</details>
+
+<details>
+<summary><b>Local builds</b></summary>
+
+```bash
+# Windows agent (from any OS)
+cd agent && GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o TurboButton.exe .
+
+# Linux agent (static)
+cd agent && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o turbobutton .
+
+# Android app (needs the Android SDK)
+cd android && ./gradlew assembleRelease
+```
+
+**Demo mode** (no real PC needed; this is how the screenshots were made):
+
+```bash
+cd agent && TURBO_MOCK=1 TURBO_MOCK_DELAY=1500 TURBO_MOCK_NAME=CUSTOMER-PC go run .
+```
+
+</details>
+
+<details>
+<summary><b>Project layout</b></summary>
+
+```
+agent/            Go agent: one file, no dependencies
+  web/            the control page (shared by the app and phone browsers) and the customer screen
+  scripts/        PowerShell scripts for Windows scans and fixes
+  linux_*.go      the native Linux scan and fixes
+android/          the companion app (a WebView plus a small native bridge)
+packaging/linux/  AppImage launcher and desktop file
+docs/media/       README screenshots and clips
+```
+
+</details>
+
+---
+
+## Troubleshooting
+
+<details>
+<summary><b>The phone can't connect</b></summary>
+
+- The phone and the PC must be on the same network. Guest Wi-Fi and "client isolation" block it.
+- The agent adds a firewall rule for its port (47800) itself. Third-party firewalls may still ask, or block it.
+- On a VPN? Turn it off on one side, or use the address under the QR code.
+
+</details>
+
+<details>
+<summary><b>"Couldn't read that reply" after sharing from an AI app</b></summary>
+
+Make sure the AI replied in the chat itself, not in a canvas, artifact or file, then share that reply back. If the message says it found your own request instead of a reply, share the AI's answer rather than your prompt.
+
+</details>
+
+<details>
+<summary><b>The update won't install</b></summary>
+
+If the installed app was signed with a different key (builds from before the permanent key), uninstall it once and install the latest APK. Share any reports you want to keep first. Later updates install normally.
+
+</details>
+
+<details>
+<summary><b>Linux: drive health says "unknown"</b></summary>
+
+Install `smartmontools` (`pacman -S smartmontools`, `apt install smartmontools`, and so on) and rescan.
+
+</details>
+
+---
+
+<div align="center">
+<sub>Tested so far: the Linux agent on Ubuntu and CachyOS, the Android app on a real phone, and the Windows agent in a simulated setup. Please report anything odd on real Windows PCs.</sub>
+</div>

@@ -16,8 +16,15 @@ var mockScans int
 func mockMode() bool { return os.Getenv("TURBO_MOCK") == "1" }
 
 func mockRun(name string, env map[string]string, onLine func(string)) (json.RawMessage, error) {
-	onLine("mock: running " + name)
+	onLine("Starting " + name + "...")
 	time.Sleep(300 * time.Millisecond)
+	// TURBO_MOCK_DELAY=ms makes each simulated job take a while (for demos and screen recordings).
+	if d, _ := time.ParseDuration(os.Getenv("TURBO_MOCK_DELAY") + "ms"); d > 0 && name != "scan" {
+		for i := 1; i <= 4; i++ {
+			time.Sleep(d / 4)
+			onLine(fmt.Sprintf("Working... step %d of 4", i))
+		}
+	}
 	if name == "scan" {
 		mockScans++
 		b, err := os.ReadFile("testdata/mock_scan.json")
@@ -64,6 +71,10 @@ func mockRun(name string, env map[string]string, onLine func(string)) (json.RawM
 		}
 		return json.RawMessage(`{"mode":"install","found":1,"installed":1,"failed":0,"rebootRequired":true}`), nil
 	}
-	out, _ := json.Marshal(map[string]any{"mock": true, "action": name, "env": env, "freedBytes": 123456789})
+	res := map[string]any{"mock": true, "action": name}
+	if name == "cleanup" || name == "component_cleanup" {
+		res["freedBytes"] = 400000000 + int64(len(env["PCM_target"]))*97000000
+	}
+	out, _ := json.Marshal(res)
 	return out, nil
 }

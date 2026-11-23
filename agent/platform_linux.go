@@ -9,9 +9,11 @@ import (
 	"bufio"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"os/user"
 	"path/filepath"
 	"strconv"
@@ -72,7 +74,27 @@ func relaunchAsAdmin() error {
 		return fmt.Errorf("run it as root (sudo ./TurboButton)")
 	}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	return cmd.Run()
+	// Ctrl+C and closing the terminal reach the admin copy too, and it cleans up and exits.
+	// This launcher must not die first: wait for it, so the terminal doesn't report a crash
+	// and the temporary copy below is removed.
+	sig := make(chan os.Signal, 4)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT)
+	defer signal.Stop(sig)
+	go func() {
+		for range sig {
+		}
+	}()
+	err = cmd.Run()
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		switch ee.ExitCode() {
+		case 126, 127: // pkexec: authentication cancelled or not authorised
+			return fmt.Errorf("the password prompt was cancelled")
+		default:
+			return nil // the admin copy ran and has already reported anything that went wrong
+		}
+	}
+	return err
 }
 
 // ---- who is the desktop user (for the customer screen) ----

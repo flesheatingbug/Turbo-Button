@@ -123,7 +123,7 @@ func main() {
 	}
 
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP) // SIGHUP: the terminal window was closed
 	byPhone := false
 	select {
 	case <-sig:
