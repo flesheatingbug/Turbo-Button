@@ -59,11 +59,13 @@ public class MainActivity extends Activity {
     private final ExecutorService pool = Executors.newCachedThreadPool();
     private SecureStore store;
     private File reportsDir;
+    private volatile String sharedIn; // text shared into the app (an AI reply), until the page takes it
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         store = new SecureStore(this);
+        takeIntent(getIntent());
         reportsDir = new File(getFilesDir(), "reports");
         //noinspection ResultOfMethodCallIgnored
         reportsDir.mkdirs();
@@ -107,6 +109,23 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient()); // alert()/confirm() dialogs
         web.addJavascriptInterface(new Bridge(), "TurboNative");
         web.loadUrl("https://" + HOST + "/assets/index.html");
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (takeIntent(intent) && web != null) {
+            web.evaluateJavascript("window.__sharedIn && window.__sharedIn()", null);
+        }
+    }
+
+    private boolean takeIntent(Intent intent) {
+        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return false;
+        String t = intent.getStringExtra(Intent.EXTRA_TEXT);
+        if (t == null || t.isEmpty()) return false;
+        sharedIn = t;
+        return true;
     }
 
     @Override
@@ -203,6 +222,44 @@ public class MainActivity extends Activity {
                     cm.setPrimaryClip(ClipData.newPlainText("Turbo Button", text));
                 } catch (Exception e) {
                     toast("Could not copy: " + e.getMessage());
+                }
+            });
+        }
+
+        /** Returns (once) text that was shared into the app, e.g. an AI app's reply. */
+        @JavascriptInterface
+        public String takeShared() {
+            String t = sharedIn;
+            sharedIn = null;
+            return t == null ? "" : t;
+        }
+
+        /**
+         * Opens the share sheet with the scan as a .txt attachment and the short instruction as the message,
+         * so AI apps treat the instruction as the user's request and the file as data. The instruction is
+         * also put on the clipboard in case the chosen app doesn't fill in the message box.
+         */
+        @JavascriptInterface
+        public void shareToAI(final String fileName, final String content, final String message) {
+            main.post(() -> {
+                try {
+                    if (fileName == null || !fileName.matches("^[A-Za-z0-9_.\\-]{1,80}\\.txt$")) throw new IllegalArgumentException("bad file name");
+                    File dir = new File(getCacheDir(), "share");
+                    //noinspection ResultOfMethodCallIgnored
+                    dir.mkdirs();
+                    File f = new File(dir, fileName);
+                    try (FileOutputStream fo = new FileOutputStream(f)) { fo.write(content.getBytes(StandardCharsets.UTF_8)); }
+                    Uri uri = FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".files", f);
+                    ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(ClipData.newPlainText("Turbo Button", message));
+                    Intent send = new Intent(Intent.ACTION_SEND)
+                            .setType("text/plain")
+                            .putExtra(Intent.EXTRA_STREAM, uri)
+                            .putExtra(Intent.EXTRA_TEXT, message)
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(send, "Send to your AI app"));
+                } catch (Exception e) {
+                    toast("Could not share: " + e.getMessage());
                 }
             });
         }

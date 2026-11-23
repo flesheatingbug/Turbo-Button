@@ -45,7 +45,7 @@ Keep `turbobutton.jks` safe and don't commit it (it's already in `.gitignore`). 
 | Option | Cost | Privacy | Set up |
 |---|---|---|---|
 | **Quick plan** button | Free, offline | Nothing leaves the phone | Nothing — built-in rules |
-| **Copy for AI app** (Plan/Report tabs) | Uses the Claude/ChatGPT plan you already have | Goes to your AI app | Copy → paste into a new chat → paste the reply back |
+| **Send to AI app** (Plan/Report tabs) | Uses the Claude/ChatGPT plan you already have | Goes to your AI app | Opens the share sheet: pick Claude or ChatGPT and send (the scan goes as a file, the instruction as your message). On the AI's reply tap **Share → Turbo Button**. In a phone browser it's copy/paste instead. |
 | **Ollama** on your own PC/server | Free | Stays on your hardware | Provider → Ollama, base `http://<server>:11434`, model e.g. `qwen3.5:9b`. Away from home, reach it via Tailscale/WireGuard. The app forces Ollama to reply in the exact JSON shape. |
 | **Google Gemini** free tier | Free (rate-limited) | Weaker free-tier data terms | Key from aistudio.google.com/apikey |
 | **OpenRouter** free models | Free (about 50 requests/day) | Free endpoints may log | Key from openrouter.ai, model `openrouter/free` |

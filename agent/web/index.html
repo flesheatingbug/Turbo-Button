@@ -188,9 +188,9 @@
       <div class="row"><button class="b" id="planBtn">Analyse with AI</button><button class="b2" id="quickBtn">Quick plan (no AI)</button></div>
       <div id="planStatus" class="mut" style="margin-top:6px">Run a scan first. Quick plan uses built-in rules: instant, offline and free. Nothing runs until you tick it and press Run.</div>
       <details style="margin-top:10px"><summary>Use your Claude/ChatGPT app instead (no API key)</summary>
-        <div class="mut" style="margin:6px 0">1. Tap Copy. 2. Paste into a <b>new</b> chat in your AI app and send. 3. Tap the copy button on its code block (or copy the whole reply) and paste it below.</div>
+        <div class="mut aiSteps" style="margin:6px 0"></div>
         <div class="row"><button class="b2" id="planCopy">Copy for AI app</button></div>
-        <textarea id="planPaste" placeholder="Paste the AI app's reply here" style="margin-top:8px"></textarea>
+        <textarea id="planPaste" placeholder="…or paste the AI app's reply here" style="margin-top:8px"></textarea>
         <div class="row" style="margin-top:6px"><button class="b2" id="planUsePaste">Use this reply</button></div>
       </details>
     </div>
@@ -229,8 +229,9 @@
         <button class="b2" id="reportBasicBtn">Basic report (no AI)</button>
       </div>
       <details style="margin-top:10px"><summary>Use your Claude/ChatGPT app instead (no API key)</summary>
+        <div class="mut aiSteps" style="margin:6px 0"></div>
         <div class="row" style="margin-top:6px"><button class="b2" id="reportCopy">Copy for AI app</button></div>
-        <textarea id="reportPaste" placeholder="Paste the AI app's reply here" style="margin-top:8px"></textarea>
+        <textarea id="reportPaste" placeholder="…or paste the AI app's reply here" style="margin-top:8px"></textarea>
         <div class="row" style="margin-top:6px"><button class="b2" id="reportUsePaste">Use this reply</button></div>
       </details>
       <div class="mut" id="reportStatus" style="margin-top:6px"></div>
@@ -262,7 +263,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.7.1";
+const PAGE_VERSION = "0.8.0";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -348,7 +349,7 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.da
 
 // ---------- AI settings ----------
 const DEF = {
-  manual: { base: "", model: "", keyPh: "", hint: "No key needed. \"Analyse with AI\" and \"Write report with AI\" copy everything to your clipboard: paste it into a new chat in your Claude or ChatGPT app, send, then copy the whole reply back into Turbo Button. Or just use Quick plan." },
+  manual: { base: "", model: "", keyPh: "", hint: "No key needed. \"Analyse with AI\" sends the scan to your Claude or ChatGPT app as a file with a short instruction. When it answers, tap Share on the reply and pick Turbo Button. Or just use Quick plan." },
   anthropic: { base: "https://api.anthropic.com", model: "claude-sonnet-5-5", keyPh: "sk-ant-…", hint: "Key from platform.claude.com → API keys. Billed per use, separate from a Claude subscription." },
   gemini: { base: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.8-flash", keyPh: "AI…", hint: "Free key from aistudio.google.com/apikey (no card). Free-tier data terms are weaker — avoid for sensitive customers." },
   openrouter: { base: "https://openrouter.ai/api/v1", model: "openrouter/free", keyPh: "sk-or-…", hint: "Free key from openrouter.ai. openrouter/free picks a free model at random (about 50 requests/day). Quality varies." },
@@ -652,7 +653,7 @@ function openPaste(which) {
 }
 $("planBtn").onclick = async () => {
   if (!S.scan) { toast("Run a scan first"); show("scan"); return; }
-  if (getAI().provider === "manual") { $("planCopy").onclick(); openPaste("plan"); $("planStatus").textContent = "Copied. Paste it into your AI app, then paste its reply in the box below."; return; }
+  if (getAI().provider === "manual") { aiAppSend("plan"); openPaste("plan"); $("planStatus").textContent = NATIVE ? "Sent to your AI app. Share its reply back to Turbo Button." : "Copied. Paste it into your AI app, then paste its reply in the box below."; return; }
   $("planStatus").innerHTML = '<span class="spin"></span> The AI is reading the scan… (20–90 s, longer on a local model)';
   $("planBtn").disabled = true;
   const sess = S;
@@ -675,9 +676,25 @@ function planUserChat() {
   const d = deepResults();
   return "ACTION CATALOG:\n" + catalogText() + "\n\nSCAN:\n" + compactScan(S.scan, true) + (Object.keys(d).length ? "\n\nDEEP CHECK RESULTS:\n" + JSON.stringify(d) : "");
 }
+// For AI apps: the short instruction goes in the user's own message and the scan goes as an attached file,
+// so the AI treats the instruction as the request (instructions inside a long paste get treated as content).
+function aiAppSend(kind) {
+  const plan = kind === "plan";
+  const system = plan ? PLAN_SYSTEM : REPORT_SYSTEM, shape = plan ? "summary, health, findings, proposals, manual" : "headline, customerSummary, workDone, issuesFound, recommendations, technicalNotes";
+  const data = plan ? planUserChat() : reportUser();
+  const message = `Turbo Button ${plan ? "plan" : "report"} request: read the attached file and follow the INSTRUCTIONS section in it exactly. ` +
+    `Reply with ONLY one JSON object (${shape}) inside a single \`\`\`json code block. No other text: no review, no summary, no questions.`;
+  if (NATIVE && window.TurboNative.shareToAI) {
+    const content = "TURBO BUTTON REQUEST\n\n=== INSTRUCTIONS (from the technician) ===\n" +
+      "Reply with ONE JSON object inside a single ```json code block and nothing else. Keep every text field short (under 20 words) and give at most 25 proposals.\n\n" +
+      system + "\n\n=== DATA ===\n" + data + "\n=== END ===\n";
+    window.TurboNative.shareToAI(`TurboButton-${plan ? "plan" : "report"}-request.txt`, content, message);
+    toast("Pick Claude or ChatGPT and send. If the message box is empty, paste — the instruction is on your clipboard.", 8000);
+  } else copyText(chatPrompt(system, data, shape));
+}
 $("planCopy").onclick = () => {
   if (!S.scan) { toast("Run a scan first"); show("scan"); return; }
-  copyText(chatPrompt(PLAN_SYSTEM, planUserChat(), "summary, health, findings, proposals, manual"));
+  aiAppSend("plan");
 };
 $("planUsePaste").onclick = () => {
   try { const pl = parseJSON($("planPaste").value); usePlan(pl, "AI app (pasted)"); $("planPaste").value = ""; toast(pl._repaired ? "Plan loaded — the reply was cut off, so some suggestions may be missing" : "Plan loaded", 5000); }
@@ -1146,14 +1163,14 @@ function useReport(r, sess = S) {
   if (sess === S) { renderReport(); updateFlow(); } else toast(`${sess.name}: report ready`);
 }
 $("reportBtn").onclick = async () => {
-  if (getAI().provider === "manual") { $("reportCopy").onclick(); openPaste("report"); $("reportStatus").textContent = "Copied. Paste it into your AI app, then paste its reply in the box below."; return; }
+  if (getAI().provider === "manual") { aiAppSend("report"); openPaste("report"); $("reportStatus").textContent = NATIVE ? "Sent to your AI app. Share its reply back to Turbo Button." : "Copied. Paste it into your AI app, then paste its reply in the box below."; return; }
   $("reportStatus").innerHTML = '<span class="spin"></span> Writing report…';
   const sess = S;
   try { useReport(parseJSON(await askAI(REPORT_SYSTEM, reportUser(), 4000, reportSchema())), sess); if (sess === S) $("reportStatus").textContent = ""; }
   catch (e) { $("reportStatus").textContent = "AI unavailable (" + e.message + ") — made a basic report instead."; useReport(basicReport()); }
 };
 $("reportBasicBtn").onclick = () => { $("reportStatus").textContent = ""; useReport(basicReport()); };
-$("reportCopy").onclick = () => copyText(chatPrompt(REPORT_SYSTEM, reportUser(), "headline, customerSummary, workDone, issuesFound, recommendations, technicalNotes"));
+$("reportCopy").onclick = () => aiAppSend("report");
 $("reportUsePaste").onclick = () => {
   try { useReport(parseJSON($("reportPaste").value)); $("reportPaste").value = ""; $("reportStatus").textContent = ""; }
   catch (e) { toast("Couldn't read that reply: " + e.message, 6000); }
@@ -1269,6 +1286,24 @@ function offerContinue(sess) {
   } else dropRecord(mid);
   saveState(sess); saveRecord(sess);
 }
+
+// ---------- AI replies shared into the app (Share → Turbo Button) ----------
+function handleShared(text) {
+  let o = null; try { o = parseJSON(text); } catch {}
+  if (o && Array.isArray(o.proposals)) {
+    if (!S.scan) { $("planPaste").value = text; toast("Connect to the PC and scan first, then tap Use this reply.", 6000); show("plan"); return; }
+    usePlan(o, "AI app (shared)"); show("plan"); toast(o._repaired ? "Plan received — the reply was cut off, so some suggestions may be missing." : "Plan received from your AI app.", 5000); return;
+  }
+  if (o && (o.headline || o.customerSummary)) { useReport(o); show("report"); toast("Report received from your AI app."); return; }
+  // Not JSON: drop it into the plan box so nothing is lost.
+  $("planPaste").value = text; $("planPaste").closest("details").open = true; show("plan");
+  toast("That reply didn't contain a Turbo Button plan. Ask the AI app to \"reply with only the JSON, in one code block\" and share again.", 8000);
+}
+window.__sharedIn = () => { try { const t = NATIVE ? window.TurboNative.takeShared() : ""; if (t) handleShared(t); } catch {} };
+document.querySelectorAll(".aiSteps").forEach(el => el.innerHTML = NATIVE
+  ? "1. Tap <b>Send to AI app</b> and pick Claude or ChatGPT, then send.<br>2. On the AI's reply tap <b>Share → Turbo Button</b>. The plan loads by itself."
+  : "1. Tap Copy and paste it into a <b>new</b> chat in your AI app.<br>2. Copy the AI's whole reply and paste it below.");
+if (NATIVE) { $("planCopy").textContent = "Send to AI app"; $("reportCopy").textContent = "Send to AI app"; }
 
 // ---------- sessions: connect, switch, end ----------
 $("autoRP").onchange = async () => { try { await api("/api/settings", { method: "POST", body: JSON.stringify({ autoRestorePoint: $("autoRP").checked }) }); } catch (e) { toast(e.message); } };
@@ -1414,11 +1449,13 @@ async function startSession(sess) {
   if (!SESS.length) {
     show("setup");
     if (!NATIVE) toast("Scan the QR code shown on the PC to connect.", 8000);
+    window.__sharedIn();
     return;
   }
   show(S.scan ? "scan" : "setup");
   await Promise.all(SESS.map(x => startSession(x)));
   updateFlow();
+  window.__sharedIn();
 })();
 </script>
 </body>
