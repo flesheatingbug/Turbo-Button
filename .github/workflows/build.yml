@@ -81,17 +81,20 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Use stable signing key if configured
+      - name: Unlock the signing key
         env:
-          KEYSTORE_B64: ${{ secrets.TURBO_KEYSTORE_B64 }}
           KEYSTORE_PASS: ${{ secrets.TURBO_KEYSTORE_PASS }}
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/turbobutton.jks"
+          # The key is stored encrypted in the repo (android/app/turbobutton.keystore.enc).
+          # Its passphrase is the repository secret TURBO_KEYSTORE_PASS. With the same key on every
+          # build, new APKs install over the old one, so the in-app updater works.
+          if [ -n "$KEYSTORE_PASS" ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:KEYSTORE_PASS \
+              -in android/app/turbobutton.keystore.enc -out "$RUNNER_TEMP/turbobutton.jks"
             echo "TURBO_KEYSTORE=$RUNNER_TEMP/turbobutton.jks" >> "$GITHUB_ENV"
             echo "TURBO_KEYSTORE_PASS=$KEYSTORE_PASS" >> "$GITHUB_ENV"
           else
-            echo "::warning::No signing key secrets set - APK is signed with a throwaway debug key, so each build must be uninstalled before installing the next."
+            echo "::warning::Secret TURBO_KEYSTORE_PASS is not set - the APK is signed with a throwaway key, so in-app updates can't install it over the old one."
           fi
       - name: Build APK
         working-directory: android
@@ -122,4 +125,4 @@ jobs:
           gh release delete latest -R "$REPO" --yes --cleanup-tag || true
           gh release create latest out/TurboButton.exe out/TurboButton-x86_64.AppImage out/TurboButton-linux-x86_64 out/TurboButton-linux-arm64 out/TurboButton.apk -R "$REPO" --prerelease \
             --target "$GITHUB_SHA" --title "Latest build $(date -u '+%Y-%m-%d %H:%M') UTC" \
-            --notes "Automatic build of ${GITHUB_SHA::7}. Install TurboButton.apk on your phone; copy TurboButton.exe (Windows) and TurboButton-x86_64.AppImage (Linux) to a USB stick."
+            --notes "Build ${GITHUB_RUN_NUMBER}, commit ${GITHUB_SHA::7}. Install TurboButton.apk on your phone; copy TurboButton.exe (Windows) and TurboButton-x86_64.AppImage (Linux) to a USB stick."

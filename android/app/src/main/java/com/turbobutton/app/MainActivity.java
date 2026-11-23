@@ -109,12 +109,22 @@ public class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient()); // alert()/confirm() dialogs
         web.addJavascriptInterface(new Bridge(), "TurboNative");
         web.loadUrl("https://" + HOST + "/assets/index.html");
+
+        Updater.schedule(this);
+        if (Updater.ACTION_UPDATE.equals(getIntent().getAction())) Updater.checkAndPrompt(this, true);
+        else Updater.checkOnLaunch(this);
+        if (android.os.Build.VERSION.SDK_INT >= 33 && Updater.auto(this) && !Updater.prefs(this).getBoolean("askedNotify", false)
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Updater.prefs(this).edit().putBoolean("askedNotify", true).apply();
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
+        }
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if (Updater.ACTION_UPDATE.equals(intent.getAction())) { Updater.checkAndPrompt(this, true); return; }
         if (takeIntent(intent) && web != null) {
             web.evaluateJavascript("window.__sharedIn && window.__sharedIn()", null);
         }
@@ -263,6 +273,19 @@ public class MainActivity extends Activity {
                 }
             });
         }
+
+        /** {"build":n,"auto":bool} for the settings page. */
+        @JavascriptInterface
+        public String updateInfo() {
+            try { return new JSONObject().put("build", Updater.current(MainActivity.this)).put("auto", Updater.auto(MainActivity.this)).toString(); }
+            catch (Exception e) { return "{}"; }
+        }
+
+        @JavascriptInterface
+        public void setAutoUpdate(boolean on) { Updater.setAuto(MainActivity.this, on); }
+
+        @JavascriptInterface
+        public void checkUpdate() { main.post(() -> Updater.checkAndPrompt(MainActivity.this, true)); }
 
         @JavascriptInterface
         public String getSettings() {

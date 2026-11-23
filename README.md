@@ -21,19 +21,13 @@ Both use the same control page, `agent/web/index.html`. The `.exe` serves it to 
 2. GitHub Actions builds both on every push. When the build succeeds they're published to the repo's **Releases → "Latest build"** page as `TurboButton.apk` and `TurboButton.exe`. You can open that page straight from your phone's browser while signed in to GitHub.
 3. Install the APK on your phone. You'll need to allow installs from your browser or file manager when prompted.
 
-### Stable signing (recommended before relying on it)
+### Signing key and in-app updates
 
-Without a signing key, each build is signed with a throwaway key. That means you'd have to uninstall the app before installing an update, which wipes your saved keys and reports. To avoid that, set up a permanent key once:
+The signing key is kept encrypted in the repo (`android/app/turbobutton.keystore.enc`), the same way mbrowser does it. Add its passphrase once as a repository secret under **Settings → Secrets and variables → Actions**, named `TURBO_KEYSTORE_PASS`. Every build is then signed with the same key and installs over the previous one.
 
-```
-cd android && ./make-signing-key.sh
-```
+The app updates itself from the "Latest build" release. It checks when it opens (at most every 6 hours) and twice a day in the background, with a notification. It asks before downloading, then hands the APK to Android's installer. You can turn the automatic check off, or check by hand, under **⚙ → App updates**. The first time, Android asks you to allow Turbo Button to install apps.
 
-Then add two repository secrets under **Settings → Secrets and variables → Actions**:
-- `TURBO_KEYSTORE_B64`: the base64 text the script prints
-- `TURBO_KEYSTORE_PASS`: the password you chose
-
-Keep `turbobutton.jks` safe and don't commit it (it's already in `.gitignore`). If you lose it, you can't update the installed app without uninstalling it.
+If you're moving from a build signed with a throwaway key, uninstall the old app once and install the new build. The updater detects a key mismatch and tells you so, rather than failing.
 
 ### Building locally instead
 
