@@ -98,11 +98,20 @@
   header .pc { background:none; border:0; font:inherit; font-size:13px; cursor:pointer; color:var(--mut); padding:4px; }
   #boot { position:fixed; inset:0; z-index:70; background:var(--bg); color:var(--text); padding:28px 20px; font:15px/1.7 "Cascadia Mono","Consolas","Roboto Mono",ui-monospace,monospace;
     white-space:pre-wrap; text-shadow:0 0 6px currentColor; }
+
+  #flash { position:fixed; inset:0; z-index:80; display:none; align-items:center; justify-content:center; pointer-events:none; }
+  #flash > div { border:2px solid var(--ok); background:var(--bg); color:var(--ok); padding:18px 26px; font:700 18px/1.4 "Cascadia Mono","Consolas","Roboto Mono",ui-monospace,monospace;
+    letter-spacing:.12em; text-align:center; box-shadow:0 0 24px rgba(93,255,135,.5); text-shadow:0 0 8px currentColor; animation:pop 1.5s ease forwards; }
+  #flash small { display:block; font-size:12px; letter-spacing:.04em; font-weight:400; opacity:.85; margin-top:4px; }
+  @keyframes pop { 0% { transform:scale(.6); opacity:0 } 12% { transform:scale(1.06); opacity:1 } 20% { transform:scale(1) } 80% { opacity:1 } 100% { opacity:0; transform:scale(.98) } }
+  #flash .bar { height:4px; background:var(--ok); margin-top:10px; animation:fill 1s steps(12) forwards; transform-origin:left; }
+  @keyframes fill { from { transform:scaleX(0) } to { transform:scaleX(1) } }
   #boot .cur { animation:blink 1s steps(1) infinite; }
 </style>
 </head>
 <body class="term">
 <div id="boot" style="display:none"></div>
+<div id="flash"><div><span id="flashText">PROMPT COPIED ✓</span><small id="flashSub"></small><div class="bar"></div></div></div>
 <header>
   <h1>Turbo Button <i>●</i></h1>
   <button class="pc" id="pcName" title="Switch PC">connecting…</button>
@@ -263,7 +272,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.8.0";
+const PAGE_VERSION = "0.8.1";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -452,7 +461,19 @@ function parseJSON(t) {
       try { const o = JSON.parse(attempt); if (attempt !== c.slice(0, b + 1)) o._repaired = true; return o; } catch (e) { lastErr = e.message; }
     }
   }
-  throw new Error("couldn't find a valid JSON answer in the reply (" + lastErr + "). Make sure you copied the whole reply; if it was cut off, ask the AI app to \"reply again, shorter, JSON only\".");
+  throw new Error(explainNoPlan(t, lastErr));
+}
+// Say what was actually received, so it's obvious what went wrong.
+function explainNoPlan(t, err) {
+  const s = t.trim(), peek = s.replace(/\s+/g, " ").slice(0, 90);
+  if (!s) return "nothing was pasted or shared.";
+  if (/^(Turbo Button (plan|report) request|TURBO BUTTON REQUEST|=== TURBO BUTTON REQUEST)/i.test(s))
+    return "that's Turbo Button's own request (it was still on the clipboard), not the AI's answer. In the AI app, tap Copy under its reply first, then paste here.";
+  if (/^https?:\/\/\S+$/.test(s) || (/(claude\.ai\/share|chatgpt\.com\/share|chat\.openai\.com\/share|g\.co\/gemini)/i.test(s) && s.length < 300))
+    return "that's a share link, not the reply text. In the AI app use Copy on the reply (not Share → link), then paste here.";
+  if (!s.includes("{"))
+    return `the reply has no plan in it — it starts: "${peek}…". The AI probably put the plan in a file, document or canvas, or answered in words. Ask it: "Paste the JSON directly in the chat, in one code block", then copy that reply.`;
+  return `the plan in the reply is incomplete or damaged (${err}). It starts: "${peek}…". If it was cut off, ask the AI app to "reply again with only the JSON, shorter".`;
 }
 
 // ---------- catalog & validation ----------
@@ -667,8 +688,9 @@ $("quickBtn").onclick = () => {
 };
 function chatPrompt(system, data, shape) {
   return "=== TURBO BUTTON REQUEST - READ ALL OF THIS FIRST ===\n" +
-    "Reply with ONE JSON object inside a single ```json code block and nothing else: no introduction, no explanation, no questions, no follow-up offers. " +
-    "Keep every text field short (under 20 words) and give at most 25 proposals so the reply is not cut off.\n\n" +
+    "Reply with ONE JSON object inside a single ```json code block TYPED DIRECTLY IN YOUR CHAT REPLY and nothing else: no introduction, no explanation, no questions, no follow-up offers. " +
+    "Do NOT create a file, document, artifact or canvas, and don't use tools or code execution. " +
+    "Keep every text field short (under 15 words) and give at most 15 proposals so the reply is not cut off.\n\n" +
     system + "\n\n=== DATA ===\n" + data + "\n=== END OF DATA ===\n\n" +
     "REMINDER: answer with only the JSON object (" + shape + ") in one ```json code block. Nothing before or after it.";
 }
@@ -683,13 +705,15 @@ function aiAppSend(kind) {
   const system = plan ? PLAN_SYSTEM : REPORT_SYSTEM, shape = plan ? "summary, health, findings, proposals, manual" : "headline, customerSummary, workDone, issuesFound, recommendations, technicalNotes";
   const data = plan ? planUserChat() : reportUser();
   const message = `Turbo Button ${plan ? "plan" : "report"} request: read the attached file and follow the INSTRUCTIONS section in it exactly. ` +
-    `Reply with ONLY one JSON object (${shape}) inside a single \`\`\`json code block. No other text: no review, no summary, no questions.`;
+    `Reply with ONLY one JSON object (${shape}) in a single \`\`\`json code block typed directly in the chat — not as a file, document, artifact or canvas. No other text: no review, no summary, no questions.`;
   if (NATIVE && window.TurboNative.shareToAI) {
     const content = "TURBO BUTTON REQUEST\n\n=== INSTRUCTIONS (from the technician) ===\n" +
-      "Reply with ONE JSON object inside a single ```json code block and nothing else. Keep every text field short (under 20 words) and give at most 25 proposals.\n\n" +
+      "Reply with ONE JSON object inside a single ```json code block, typed directly in your chat reply, and nothing else. " +
+      "Do NOT create a file, document, artifact or canvas, and don't use tools or code execution. Keep every text field short (under 15 words) and give at most 15 proposals.\n\n" +
       system + "\n\n=== DATA ===\n" + data + "\n=== END ===\n";
-    window.TurboNative.shareToAI(`TurboButton-${plan ? "plan" : "report"}-request.txt`, content, message);
-    toast("Pick Claude or ChatGPT and send. If the message box is empty, paste — the instruction is on your clipboard.", 8000);
+    flash("PROMPT READY ✓", "Pick your AI app and tap send");
+    setTimeout(() => window.TurboNative.shareToAI(`TurboButton-${plan ? "plan" : "report"}-request.txt`, content, message), 700);
+    setTimeout(() => toast("If the AI app's message box is empty, paste — the instruction is on your clipboard.", 7000), 1500);
   } else copyText(chatPrompt(system, data, shape));
 }
 $("planCopy").onclick = () => {
@@ -697,8 +721,8 @@ $("planCopy").onclick = () => {
   aiAppSend("plan");
 };
 $("planUsePaste").onclick = () => {
-  try { const pl = parseJSON($("planPaste").value); usePlan(pl, "AI app (pasted)"); $("planPaste").value = ""; toast(pl._repaired ? "Plan loaded — the reply was cut off, so some suggestions may be missing" : "Plan loaded", 5000); }
-  catch (e) { toast("Couldn't read that reply: " + e.message, 6000); }
+  try { const pl = parseJSON($("planPaste").value); usePlan(pl, "AI app (pasted)"); $("planPaste").value = ""; flash("PLAN LOADED ✓", `${(pl.proposals || []).length} suggestion(s)`); toast(pl._repaired ? "Plan loaded — the reply was cut off, so some suggestions may be missing" : "Plan loaded", 5000); }
+  catch (e) { toast("Couldn't read that reply: " + e.message, 10000); }
 };
 function renderPlan() {
   const p = S.plan; if (!p) return;
@@ -733,10 +757,19 @@ function renderPlan() {
   upd();
 }
 
+// ---------- "copied" flash ----------
+function flash(text, sub = "") {
+  const f = $("flash"); $("flashText").textContent = text; $("flashSub").textContent = sub;
+  f.style.display = "flex"; const box = f.firstElementChild; box.style.animation = "none"; void box.offsetWidth; box.style.animation = "";
+  const bar = box.querySelector(".bar"); bar.style.animation = "none"; void bar.offsetWidth; bar.style.animation = "";
+  try { navigator.vibrate && navigator.vibrate(30); } catch {}
+  clearTimeout(flash.t); flash.t = setTimeout(() => { f.style.display = "none"; }, 1500);
+}
+
 // ---------- clipboard ----------
 function copyText(t) {
-  if (NATIVE && window.TurboNative.copyText) { window.TurboNative.copyText(t); toast("Copied — now paste it into your AI app"); return; }
-  const done = () => toast("Copied — now paste it into your AI app");
+  if (NATIVE && window.TurboNative.copyText) { window.TurboNative.copyText(t); flash("PROMPT COPIED ✓", "Now paste it into your AI app"); return; }
+  const done = () => flash("PROMPT COPIED ✓", "Now paste it into your AI app");
   if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(t).then(done, () => legacyCopy(t, done)); return; }
   legacyCopy(t, done);
 }
@@ -1173,7 +1206,7 @@ $("reportBasicBtn").onclick = () => { $("reportStatus").textContent = ""; useRep
 $("reportCopy").onclick = () => aiAppSend("report");
 $("reportUsePaste").onclick = () => {
   try { useReport(parseJSON($("reportPaste").value)); $("reportPaste").value = ""; $("reportStatus").textContent = ""; }
-  catch (e) { toast("Couldn't read that reply: " + e.message, 6000); }
+  catch (e) { toast("Couldn't read that reply: " + e.message, 10000); }
 };
 function reportHTML() {
   const r = S.report, sys = S.scan?.system || S.firstScan?.system || {};
@@ -1292,12 +1325,12 @@ function handleShared(text) {
   let o = null; try { o = parseJSON(text); } catch {}
   if (o && Array.isArray(o.proposals)) {
     if (!S.scan) { $("planPaste").value = text; toast("Connect to the PC and scan first, then tap Use this reply.", 6000); show("plan"); return; }
-    usePlan(o, "AI app (shared)"); show("plan"); toast(o._repaired ? "Plan received — the reply was cut off, so some suggestions may be missing." : "Plan received from your AI app.", 5000); return;
+    usePlan(o, "AI app (shared)"); show("plan"); flash("PLAN RECEIVED ✓", `${o.proposals.length} suggestion(s)`); toast(o._repaired ? "Plan received — the reply was cut off, so some suggestions may be missing." : "Plan received from your AI app.", 5000); return;
   }
   if (o && (o.headline || o.customerSummary)) { useReport(o); show("report"); toast("Report received from your AI app."); return; }
   // Not JSON: drop it into the plan box so nothing is lost.
   $("planPaste").value = text; $("planPaste").closest("details").open = true; show("plan");
-  toast("That reply didn't contain a Turbo Button plan. Ask the AI app to \"reply with only the JSON, in one code block\" and share again.", 8000);
+  toast("Couldn't use what was shared: " + explainNoPlan(text, "no JSON"), 10000);
 }
 window.__sharedIn = () => { try { const t = NATIVE ? window.TurboNative.takeShared() : ""; if (t) handleShared(t); } catch {} };
 document.querySelectorAll(".aiSteps").forEach(el => el.innerHTML = NATIVE
