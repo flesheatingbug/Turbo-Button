@@ -81,6 +81,7 @@
       <div class="mut">Your key is used from this phone only and is sent straight to the provider. It never goes to the customer's PC.</div>
       <label>Provider</label>
       <select id="aiProvider">
+        <option value="manual">No API key – use my Claude/ChatGPT app (copy &amp; paste)</option>
         <option value="anthropic">Claude (Anthropic API, paid per use)</option>
         <option value="gemini">Google Gemini (free tier)</option>
         <option value="openrouter">OpenRouter (free models)</option>
@@ -88,12 +89,14 @@
         <option value="openai">Other OpenAI-compatible (ChatGPT, LM Studio…)</option>
       </select>
       <div class="mut" id="aiHint" style="margin-top:6px"></div>
+      <div id="aiFields">
       <label>API base URL</label>
       <input id="aiBase" autocomplete="off" spellcheck="false">
       <label>Model</label>
       <input id="aiModel" autocomplete="off" spellcheck="false">
       <label>API key <span class="mut">(leave empty for local models that don't need one)</span></label>
       <input id="aiKey" type="password" autocomplete="off" spellcheck="false">
+      </div>
       <label class="row" id="rememberRow"><input type="checkbox" id="aiRemember" style="width:auto"> Remember on this phone for this PC address</label>
       <div class="row" style="margin-top:10px"><button class="b" id="aiSave">Save</button><button class="b2" id="aiTest">Test</button><span id="aiTestOut" class="mut"></span></div>
     </div>
@@ -120,7 +123,7 @@
       <h2>Plan</h2>
       <div class="row"><button class="b" id="planBtn">Analyse with AI</button><button class="b2" id="quickBtn">Quick plan (no AI)</button></div>
       <div id="planStatus" class="mut" style="margin-top:6px">Run a scan first. Quick plan uses built-in rules: instant, offline and free. Nothing runs until you tick it and press Run.</div>
-      <details style="margin-top:10px"><summary>No API key? Use your Claude (or ChatGPT) app instead</summary>
+      <details style="margin-top:10px"><summary>Use your Claude/ChatGPT app instead (no API key)</summary>
         <div class="mut" style="margin:6px 0">1. Tap Copy. 2. Paste into a new chat in your AI app and send. 3. Copy its whole reply and paste it below.</div>
         <div class="row"><button class="b2" id="planCopy">Copy for AI app</button></div>
         <textarea id="planPaste" placeholder="Paste the AI app's reply here" style="margin-top:8px"></textarea>
@@ -161,7 +164,7 @@
         <button class="b" id="reportBtn">Write report with AI</button>
         <button class="b2" id="reportBasicBtn">Basic report (no AI)</button>
       </div>
-      <details style="margin-top:10px"><summary>No API key? Use your Claude (or ChatGPT) app instead</summary>
+      <details style="margin-top:10px"><summary>Use your Claude/ChatGPT app instead (no API key)</summary>
         <div class="row" style="margin-top:6px"><button class="b2" id="reportCopy">Copy for AI app</button></div>
         <textarea id="reportPaste" placeholder="Paste the AI app's reply here" style="margin-top:8px"></textarea>
         <div class="row" style="margin-top:6px"><button class="b2" id="reportUsePaste">Use this reply</button></div>
@@ -194,7 +197,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.2.1";
+const PAGE_VERSION = "0.2.2";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -248,13 +251,14 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.da
 
 // ---------- AI settings ----------
 const DEF = {
+  manual: { base: "", model: "", keyPh: "", hint: "No key needed. \"Analyse with AI\" and \"Write report with AI\" copy everything to your clipboard: paste it into a new chat in your Claude or ChatGPT app, send, then copy the whole reply back into Turbo Button. Or just use Quick plan." },
   anthropic: { base: "https://api.anthropic.com", model: "claude-sonnet-5-5", keyPh: "sk-ant-…", hint: "Key from platform.claude.com → API keys. Billed per use, separate from a Claude subscription." },
   gemini: { base: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.8-flash", keyPh: "AI…", hint: "Free key from aistudio.google.com/apikey (no card). Free-tier data terms are weaker — avoid for sensitive customers." },
   openrouter: { base: "https://openrouter.ai/api/v1", model: "openrouter/free", keyPh: "sk-or-…", hint: "Free key from openrouter.ai. openrouter/free picks a free model at random (about 50 requests/day). Quality varies." },
   ollama: { base: "http://192.168.1.10:11434", model: "qwen3.5:9b", keyPh: "not needed", hint: "Your Ollama server's address and port. Use a 9B+ model if your GPU allows. Away from home, reach it over Tailscale/WireGuard." },
   openai: { base: "https://api.openai.com/v1", model: "", keyPh: "", hint: "Any OpenAI-compatible endpoint: base URL ending in /v1, plus model name and key." }
 };
-function providerUI(p) { const d = DEF[p] || DEF.openai; $("aiHint").textContent = d.hint; $("aiKey").placeholder = d.keyPh; $("aiModel").placeholder = d.model || "model name"; }
+function providerUI(p) { const d = DEF[p] || DEF.openai; $("aiHint").textContent = d.hint; $("aiFields").style.display = p === "manual" ? "none" : ""; $("aiKey").placeholder = d.keyPh; $("aiModel").placeholder = d.model || "model name"; }
 function loadAI() {
   let s = null;
   try { s = JSON.parse((NATIVE ? window.TurboNative.getSettings() : (localStorage.getItem("turbo.ai") || sessionStorage.getItem("turbo.ai"))) || "null"); } catch {}
@@ -274,6 +278,7 @@ $("aiSave").onclick = () => {
   toast("Saved");
 };
 $("aiTest").onclick = async () => {
+  if (getAI().provider === "manual") { $("aiTestOut").textContent = "Nothing to test — copy & paste mode."; return; }
   $("aiTestOut").innerHTML = '<span class="spin"></span>';
   try { const t = await askAI("Reply with the single word OK.", "Test", 300); $("aiTestOut").textContent = "Works: " + t.slice(0, 40); }
   catch (e) { $("aiTestOut").textContent = "Failed: " + e.message; }
@@ -425,8 +430,13 @@ function usePlan(plan, source) {
   plan.proposals.forEach(p => { p._err = validate(p); p._sel = false; });
   plan._source = source; S.plan = plan; $("planStatus").textContent = ""; renderPlan();
 }
+function openPaste(which) {
+  const d = $(which + "Paste").closest("details"); d.open = true;
+  setTimeout(() => d.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+}
 $("planBtn").onclick = async () => {
   if (!S.scan) { toast("Run a scan first"); show("scan"); return; }
+  if (getAI().provider === "manual") { $("planCopy").onclick(); openPaste("plan"); $("planStatus").textContent = "Copied. Paste it into your AI app, then paste its reply in the box below."; return; }
   $("planStatus").innerHTML = '<span class="spin"></span> The AI is reading the scan… (20–90 s, longer on a local model)';
   $("planBtn").disabled = true;
   try { usePlan(parseJSON(await askAI(PLAN_SYSTEM, planUser(), 8000, planSchema())), "AI (" + getAI().model + ")"); }
@@ -717,6 +727,7 @@ function basicReport() {
 }
 function useReport(r) { if (!r || typeof r !== "object") throw new Error("Reply didn't contain a report"); S.report = r; renderReport(); }
 $("reportBtn").onclick = async () => {
+  if (getAI().provider === "manual") { $("reportCopy").onclick(); openPaste("report"); $("reportStatus").textContent = "Copied. Paste it into your AI app, then paste its reply in the box below."; return; }
   $("reportStatus").innerHTML = '<span class="spin"></span> Writing report…';
   try { useReport(parseJSON(await askAI(REPORT_SYSTEM, reportUser(), 4000, reportSchema()))); $("reportStatus").textContent = ""; }
   catch (e) { $("reportStatus").textContent = "AI unavailable (" + e.message + ") — made a basic report instead."; useReport(basicReport()); }
