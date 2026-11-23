@@ -103,11 +103,11 @@ Your AI keys never touch the customer's PC: they live encrypted on your phone.
 |:---:|:---:|:---:|
 | <img src="docs/media/screen-waiting.png" width="300"> | <img src="docs/media/screen-working.png" width="300"> | <img src="docs/media/screen-done.png" width="300"> |
 
-**Three looks** (⚙ → Look)
+**Four looks** (⚙ → Look)
 
-| Green phosphor | Amber | Modern |
-|:---:|:---:|:---:|
-| <img src="docs/media/theme-green.png" width="220"> | <img src="docs/media/theme-amber.png" width="220"> | <img src="docs/media/theme-modern.png" width="220"> |
+| Green phosphor | Amber | Deep space | Modern |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/media/theme-green.png" width="190"> | <img src="docs/media/theme-amber.png" width="190"> | <img src="docs/media/theme-deep.png" width="190"> | <img src="docs/media/theme-modern.png" width="190"> |
 
 **The agent's console** (hidden once the customer screen opens)
 
