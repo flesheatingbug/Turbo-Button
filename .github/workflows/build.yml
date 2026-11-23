@@ -84,17 +84,21 @@ jobs:
       - name: Unlock the signing key
         env:
           KEYSTORE_PASS: ${{ secrets.TURBO_KEYSTORE_PASS }}
+        shell: bash
         run: |
           # The key is stored encrypted in the repo (android/app/turbobutton.keystore.enc).
           # Its passphrase is the repository secret TURBO_KEYSTORE_PASS. With the same key on every
           # build, new APKs install over the old one, so the in-app updater works.
-          if [ -n "$KEYSTORE_PASS" ]; then
-            openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:KEYSTORE_PASS \
-              -in android/app/turbobutton.keystore.enc -out "$RUNNER_TEMP/turbobutton.jks"
+          KEYSTORE_PASS="$(printf '%s' "$KEYSTORE_PASS" | tr -d '[:space:]')"   # ignore stray spaces/line breaks from pasting
+          if [ -z "$KEYSTORE_PASS" ]; then
+            echo "::warning::Secret TURBO_KEYSTORE_PASS is not set - the APK is signed with a throwaway key, so in-app updates can't install it over the old one."
+          elif openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:KEYSTORE_PASS \
+                 -in android/app/turbobutton.keystore.enc -out "$RUNNER_TEMP/turbobutton.jks" 2>/dev/null; then
+            echo "Signing key unlocked."
             echo "TURBO_KEYSTORE=$RUNNER_TEMP/turbobutton.jks" >> "$GITHUB_ENV"
             echo "TURBO_KEYSTORE_PASS=$KEYSTORE_PASS" >> "$GITHUB_ENV"
           else
-            echo "::warning::Secret TURBO_KEYSTORE_PASS is not set - the APK is signed with a throwaway key, so in-app updates can't install it over the old one."
+            echo "::error::TURBO_KEYSTORE_PASS doesn't unlock android/app/turbobutton.keystore.enc (wrong passphrase). This APK is signed with a throwaway key; fix the secret and push again."
           fi
       - name: Build APK
         working-directory: android
