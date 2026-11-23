@@ -53,9 +53,17 @@ Keep `turbobutton.jks` safe and don't commit it (it's already in `.gitignore`). 
 
 The report also has a **Basic report (no AI)** button. It builds the report from the work log plus the Quick-plan findings.
 
+## Multiple PCs (app only)
+
+Connect as many PCs as you like: on the **PCs** tab, tap **Scan QR code** for each one. Every PC keeps running its own scan and fixes in the background, the list shows live status for each, and the name in the header switches between them. PCs, plans and report drafts are saved on the phone, so closing the app loses nothing; a PC that drops off the network shows "Not reachable" and reconnects by itself.
+
+## Look
+
+The phone and the PC window use a retro green-phosphor terminal style by default. You can switch to amber or the modern look under ⚙ → Look.
+
 ## Using the app
 
-1. Open **Setup** and choose a provider (Claude, OpenAI, OpenRouter, LM Studio or Ollama), then enter the model and key. They're saved encrypted on the phone and work for every customer.
+1. Tap **⚙** and choose a provider (Claude, OpenAI, OpenRouter, LM Studio or Ollama), then enter the model and key. They're saved encrypted on the phone and work for every customer.
 2. Run `TurboButton.exe` on the customer's PC, tap **Scan QR code** and point the phone at the console window.
 3. Work through **Scan → Plan** (tick the actions you approve, then Run) **→ Work → Report**. The report is saved automatically. Use **Share** to email it or send it on WhatsApp, Drive and so on.
 4. **End** closes the agent on the PC, then **Connect to the next PC** starts a new session.

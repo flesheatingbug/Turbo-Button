@@ -1,20 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- An 80s PC "Turbo" button: beige bezel, red push button with a lightning bolt, green LED -->
+<!-- Green-phosphor CRT monitor with a lightning bolt and a red turbo LED (matches the PC icon) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
     <!-- bezel -->
-    <path android:fillColor="#D8D0BC"
-        android:pathData="M30,34h48a6,6 0,0 1,6 6v28a6,6 0,0 1,-6 6H30a6,6 0,0 1,-6 -6V40a6,6 0,0 1,6 -6z" />
-    <!-- button shadow + button -->
-    <path android:fillColor="#8E1B1B"
-        android:pathData="M33,41h34a4,4 0,0 1,4 4v20a4,4 0,0 1,-4 4H33a4,4 0,0 1,-4 -4V45a4,4 0,0 1,4 -4z" />
-    <path android:fillColor="#E0352B"
-        android:pathData="M33,39h34a4,4 0,0 1,4 4v20a4,4 0,0 1,-4 4H33a4,4 0,0 1,-4 -4V43a4,4 0,0 1,4 -4z" />
-    <!-- lightning bolt -->
-    <path android:fillColor="#FFD23F"
-        android:pathData="M53,43l-10,12h7l-4,10l11,-13h-7z" />
-    <!-- LED -->
-    <path android:fillColor="#3FB950"
-        android:pathData="M78,53m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0" />
+    <path android:fillColor="#468C5A" android:pathData="M34,33h40a5,5 0,0 1,5 5v29a5,5 0,0 1,-5 5H34a5,5 0,0 1,-5 -5V38a5,5 0,0 1,5 -5z" />
+    <path android:fillColor="#1C2C22" android:pathData="M34,34h40a4,4 0,0 1,4 4v29a4,4 0,0 1,-4 4H34a4,4 0,0 1,-4 -4V38a4,4 0,0 1,4 -4z" />
+    <!-- screen -->
+    <path android:fillColor="#5DFF87" android:pathData="M37,38.2h34a2.5,2.5 0,0 1,2.5 2.5v23.6a2.5,2.5 0,0 1,-2.5 2.5H37a2.5,2.5 0,0 1,-2.5 -2.5V40.7a2.5,2.5 0,0 1,2.5 -2.5z" />
+    <path android:fillColor="#021A0A" android:pathData="M37.2,38.9h33.6a1.9,1.9 0,0 1,1.9 1.9v23.4a1.9,1.9 0,0 1,-1.9 1.9H37.2a1.9,1.9 0,0 1,-1.9 -1.9V40.8a1.9,1.9 0,0 1,1.9 -1.9z" />
+    <path android:strokeColor="#144623" android:strokeWidth="0.6" android:pathData="M37,41.0H71" />
+    <path android:strokeColor="#144623" android:strokeWidth="0.6" android:pathData="M37,43.2H71" />
+    <path android:strokeColor="#144623" android:strokeWidth="0.6" android:pathData="M37,45.4H71" />
+    <path android:strokeColor="#144623" android:strokeWidth="0.6" android:pathData="M37,47.6H71" />
+    <path android:strokeColor="#144623" android:strokeWidth="0.6" android:pathData="M37,49.8H71" />
+    <path android:strokeColor="#144623" android:strokeWidth="0.6" android:pathData="M37,52.0H71" />
+    <path android:strokeColor="#144623" android:strokeWidth="0.6" android:pathData="M37,54.2H71" />
+    <path android:strokeColor="#144623" android:strokeWidth="0.6" android:pathData="M37,56.4H71" />
+    <path android:strokeColor="#144623" android:strokeWidth="0.6" android:pathData="M37,58.6H71" />
+    <path android:strokeColor="#144623" android:strokeWidth="0.6" android:pathData="M37,60.8H71" />
+    <path android:strokeColor="#144623" android:strokeWidth="0.6" android:pathData="M37,63.0H71" />
+    <!-- bolt -->
+    <path android:fillColor="#AAFFC3" android:pathData="M57.2,41L46.6,54.6H53.2L50.2,64.5L61.8,49.9H54.9L59.2,41Z" />
+    <!-- stand and base -->
+    <path android:fillColor="#1C2C22" android:pathData="M50,71.1h8v4.7h-8z" />
+    <path android:fillColor="#468C5A" android:pathData="M43.4,75h21.2a1.9,1.9 0,0 1,1.9 1.9v0a1.9,1.9 0,0 1,-1.9 1.9H43.4a1.9,1.9 0,0 1,-1.9 -1.9v0a1.9,1.9 0,0 1,1.9 -1.9z" />
+    <!-- turbo LED -->
+    <path android:fillColor="#FF503C" android:pathData="M74.3,68.6m-1.3,0a1.3,1.3 0,1 1,2.6 0a1.3,1.3 0,1 1,-2.6 0" />
 </vector>

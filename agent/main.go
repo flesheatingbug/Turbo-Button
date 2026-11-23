@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 const port = 47800
@@ -46,10 +47,13 @@ func main() {
 	addFirewallRule(p)
 
 	cleanup := func() {
-		fmt.Println("\nEnding session: removing firewall rule and temporary files...")
+		fmt.Println("\n  > ENDING SESSION: removing firewall rule and temporary files...")
 		removeFirewallRule()
 		a.Cleanup()
-		fmt.Println("Done. Nothing from Turbo Button is left on this PC (any restore point and approved changes stay).")
+		fmt.Println("  > DONE. Nothing from Turbo Button is left on this PC (any restore point and approved changes stay).")
+		if vt {
+			fmt.Print("\x1b[0m")
+		}
 	}
 
 	con := &Console{color: vt}
@@ -63,7 +67,9 @@ func main() {
 		ips = []string{"127.0.0.1"}
 	}
 	url := fmt.Sprintf("http://%s:%d/#t=%s", ips[0], p, a.token)
-	printBanner(url, ips, p)
+	stopAwake := keepAwake()
+	defer stopAwake()
+	printBanner(url, ips, p, vt)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
@@ -78,27 +84,68 @@ func main() {
 	}
 }
 
-func printBanner(url string, ips []string, port int) {
-	fmt.Println("==============================================================")
-	fmt.Println("   ▄▄▄ T U R B O   B U T T O N ▄▄▄   [●] TURBO ON    v" + Version)
-	fmt.Println("==============================================================")
-	if q, err := EncodeQR(url); err == nil {
-		fmt.Print(q.Terminal())
+var (
+	bigRow1 = "▀█▀ █ █ █▀█ █▄▄ █▀█   █▄▄ █ █ ▀█▀ ▀█▀ █▀█ █▄ █"
+	bigRow2 = " █  █▄█ █▀▄ █▄█ █▄█   █▄█ █▄█  █   █  █▄█ █ ▀█"
+)
+
+func pad(s string, w int) string {
+	n := utf8.RuneCountInString(s)
+	if n >= w {
+		return s
 	}
-	fmt.Println("Scan the QR code with your phone (same Wi-Fi / network as this PC).")
-	fmt.Println("Or open this address on the phone:")
-	fmt.Println("  " + url)
-	if len(ips) > 1 {
-		fmt.Println("Other addresses for this PC (use the same #t=... part):")
-		for _, ip := range ips[1:] {
-			fmt.Printf("  http://%s:%d/\n", ip, port)
+	return s + strings.Repeat(" ", w-n)
+}
+
+func dots(label, value string) string {
+	n := 30 - utf8.RuneCountInString(label)
+	if n < 2 {
+		n = 2
+	}
+	return "  > " + label + " " + strings.Repeat(".", n) + " " + value
+}
+
+func printBanner(url string, ips []string, port int, color bool) {
+	g, hi, rs := "", "", ""
+	if color {
+		g, hi, rs = "\x1b[32m", "\x1b[1;92m", "\x1b[0m\x1b[32m"
+	}
+	const w = 54
+	fmt.Print(g)
+	fmt.Println(" ╔" + strings.Repeat("═", w) + "╗")
+	fmt.Println(" ║  " + hi + pad(bigRow1, w-2) + rs + "║")
+	fmt.Println(" ║  " + hi + pad(bigRow2, w-2) + rs + "║")
+	fmt.Println(" ║  " + pad(fmt.Sprintf("TECHNICIAN TERMINAL v%s", Version), w-17) + "[■] TURBO ON   ║")
+	fmt.Println(" ╚" + strings.Repeat("═", w) + "╝")
+	for _, l := range [][2]string{{"POWER-ON SELF TEST", "OK"}, {"ADMINISTRATOR RIGHTS", "OK"},
+		{"NETWORK LINK", fmt.Sprintf("%s:%d", ips[0], port)}, {"KEEP-AWAKE", "ON"}, {"SESSION KEY", "GENERATED"}} {
+		fmt.Println(dots(l[0], hi+l[1]+rs))
+		if !mockMode() {
+			time.Sleep(60 * time.Millisecond)
 		}
 	}
 	fmt.Println()
-	fmt.Println("Close this window or press Ctrl+C to end the session and clean up.")
-	fmt.Println("--------------------------------------------------------------")
-	fmt.Println("  LIVE ACTIVITY")
-	fmt.Println("--------------------------------------------------------------")
+	if q, err := EncodeQR(url); err == nil {
+		// QR codes need real black/white, not green.
+		if color {
+			fmt.Print("\x1b[0m")
+		}
+		fmt.Print(q.Terminal())
+		fmt.Print(g)
+	}
+	fmt.Println("  SCAN THE CODE WITH THE TURBO BUTTON APP (same network as this PC)")
+	fmt.Println("  or open: " + hi + url + rs)
+	if len(ips) > 1 {
+		fmt.Println("  Other addresses for this PC (use the same #t=... part):")
+		for _, ip := range ips[1:] {
+			fmt.Printf("    http://%s:%d/\n", ip, port)
+		}
+	}
+	fmt.Println()
+	fmt.Println("  Close this window or press Ctrl+C to end the session and clean up.")
+	fmt.Println(" " + strings.Repeat("─", w+2))
+	fmt.Println("  " + hi + "LIVE ACTIVITY" + rs)
+	fmt.Println(" " + strings.Repeat("─", w+2))
 }
 
 // lanIPs returns private IPv4 addresses, the one with the default route first.

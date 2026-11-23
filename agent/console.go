@@ -15,14 +15,15 @@ type Console struct {
 	color bool
 }
 
+// Retro phosphor palette: bright green for activity, dim green for detail, amber/red for attention.
 const (
-	cReset  = "\x1b[0m"
-	cDim    = "\x1b[90m"
-	cCyan   = "\x1b[96m"
+	cReset  = "\x1b[0m\x1b[32m" // back to the base green, not the console default
+	cDim    = "\x1b[32m"
+	cCyan   = "\x1b[1;92m"
 	cGreen  = "\x1b[92m"
-	cRed    = "\x1b[91m"
+	cRed    = "\x1b[1;91m"
 	cYellow = "\x1b[93m"
-	cPink   = "\x1b[95m"
+	cPink   = "\x1b[1;93m"
 )
 
 func (c *Console) paint(col, s string) string {

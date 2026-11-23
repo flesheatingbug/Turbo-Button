@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -85,3 +87,18 @@ func removeFirewallRule() { netsh("advfirewall", "firewall", "delete", "rule", "
 
 func mockMode() bool                                                  { return false }
 func mockRun(string, map[string]string, func(string)) ([]byte, error) { return nil, nil }
+
+// keepAwake stops Windows sleeping while the agent runs (the screen may still turn off).
+// Returns a func that restores normal behaviour.
+func keepAwake() func() {
+	done := make(chan struct{})
+	go func() {
+		runtime.LockOSThread() // execution state is per thread: keep it on one
+		set := kernel32.NewProc("SetThreadExecutionState")
+		set.Call(uintptr(0x80000000 | 0x00000001)) // ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+		<-done
+		set.Call(uintptr(0x80000000)) // ES_CONTINUOUS: back to normal
+	}()
+	var once sync.Once
+	return func() { once.Do(func() { close(done) }) }
+}

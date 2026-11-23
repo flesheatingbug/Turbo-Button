@@ -22,6 +22,8 @@ func removeFirewallRule()    {}
 
 var mockScans int
 
+func keepAwake() func() { return func() {} }
+
 func mockMode() bool { return os.Getenv("TURBO_MOCK") == "1" }
 
 func mockRun(name string, env map[string]string, onLine func(string)) (json.RawMessage, error) {

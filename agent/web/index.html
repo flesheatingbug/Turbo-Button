@@ -62,27 +62,71 @@
   @keyframes sp { to { transform:rotate(360deg); } }
   #reportView { background:#fff; color:#111; border-radius:10px; padding:14px; }
   .center { text-align:center; padding:30px 10px; }
+  /* ---------- retro terminal themes (original design) ---------- */
+  body.term { --bg:#020b05; --card:#03130a; --line:#0e4a24; --text:#5dff87; --mut:#2c9c50; --acc:#b4ffc8; --ok:#5dff87; --warn:#ffc933; --bad:#ff5b4a;
+    font-family:"Cascadia Mono","Consolas","Roboto Mono","DejaVu Sans Mono",ui-monospace,monospace; letter-spacing:.02em; text-shadow:0 0 5px rgba(93,255,135,.45); }
+  body.term.amber { --bg:#0a0600; --card:#130c00; --line:#4d3400; --text:#ffb229; --mut:#a8740f; --acc:#ffe08a; --ok:#ffc94d; text-shadow:0 0 5px rgba(255,178,41,.45); }
+  body.term::before { content:""; position:fixed; inset:0; pointer-events:none; z-index:60;
+    background:repeating-linear-gradient(to bottom, rgba(0,0,0,.28) 0, rgba(0,0,0,.28) 1px, transparent 1px, transparent 3px); animation:flick 6s infinite; }
+  body.term::after { content:""; position:fixed; inset:0; pointer-events:none; z-index:61; background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.6) 100%); }
+  @keyframes flick { 0%,100% { opacity:.9 } 48% { opacity:.9 } 50% { opacity:.75 } 52% { opacity:.9 } }
+  body.term header { background:var(--bg); border-bottom:1px solid var(--line); }
+  body.term header h1 { background:none; -webkit-text-fill-color:var(--text); color:var(--text); letter-spacing:.08em; font-size:15px; white-space:nowrap; }
+  body.term header h1::before { content:"> "; }
+  body.term header h1 i { -webkit-text-fill-color:var(--text); color:var(--text); animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:0 } }
+  body.term .card { border-radius:2px; box-shadow:inset 0 0 14px rgba(93,255,135,.06); }
+  body.term.amber .card { box-shadow:inset 0 0 14px rgba(255,178,41,.06); }
+  body.term .card h2 { text-transform:uppercase; letter-spacing:.12em; font-size:14px; }
+  body.term .card h2::before { content:"▌ "; }
+  body.term button.b, body.term button.b2 { border-radius:2px; text-transform:uppercase; letter-spacing:.06em; font-family:inherit; }
+  body.term button.b { background:var(--text); color:var(--bg); text-shadow:none; box-shadow:0 0 10px rgba(93,255,135,.45); }
+  body.term.amber button.b { box-shadow:0 0 10px rgba(255,178,41,.45); }
+  body.term button.b2 { background:transparent; color:var(--text); border:1px solid var(--text); }
+  body.term button.b::before, body.term button.b2::before { content:"[ "; } body.term button.b::after, body.term button.b2::after { content:" ]"; }
+  body.term input, body.term select, body.term textarea { background:#000; color:var(--text); border-radius:2px; font-family:inherit; text-shadow:inherit; }
+  body.term nav { background:var(--bg); border-top:1px solid var(--line); }
+  body.term nav button { font-family:inherit; text-transform:uppercase; letter-spacing:.08em; }
+  body.term nav button.on { color:var(--text); text-decoration:underline; text-underline-offset:4px; }
+  body.term #flow { background:var(--bg); }
+  body.term #flow .steps span.done { background:var(--mut); } body.term #flow .steps span.now { background:var(--text); box-shadow:0 0 6px var(--text); }
+  body.term .badge { background:transparent !important; border:1px solid currentColor; border-radius:2px; }
+  body.term pre { background:#000; }
+  body.term .pc { color:var(--mut); }
+  body.term #reportView, body.term #reportView * { text-shadow:none; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; letter-spacing:0; }
+  body.term .toast { background:var(--bg); border-color:var(--text); border-radius:2px; }
+  header .pc { background:none; border:0; font:inherit; font-size:13px; cursor:pointer; color:var(--mut); padding:4px; }
+  #boot { position:fixed; inset:0; z-index:70; background:var(--bg); color:var(--text); padding:28px 20px; font:15px/1.7 "Cascadia Mono","Consolas","Roboto Mono",ui-monospace,monospace;
+    white-space:pre-wrap; text-shadow:0 0 6px currentColor; }
+  #boot .cur { animation:blink 1s steps(1) infinite; }
 </style>
 </head>
-<body>
+<body class="term">
+<div id="boot" style="display:none"></div>
 <header>
   <h1>Turbo Button <i>●</i></h1>
-  <span class="pc" id="pcName">connecting…</span>
+  <button class="pc" id="pcName" title="Switch PC">connecting…</button>
+  <button class="b2 sm" id="gearBtn" title="Settings">⚙</button>
   <button class="b2 sm" id="endBtn">End</button>
 </header>
 <div id="flow"><div class="steps"><span></span><span></span><span></span><span></span><span></span><span></span></div>
   <div class="row"><div id="flowText">Starting…</div><button class="b sm" id="flowBtn" style="display:none"></button></div></div>
 
 <main>
-  <!-- SETUP -->
+  <!-- PCs -->
   <section id="tab-setup">
+    <div class="card" id="pcListCard"><h2>Your PCs</h2><div id="pcList"><div class="mut">No PCs connected yet.</div></div></div>
     <div class="card" id="connectCard" style="display:none">
-      <h2>Connect to a PC</h2>
-      <div class="mut">Run TurboButton.exe on the customer's PC, then scan the QR code it shows.</div>
+      <h2>Connect a PC</h2>
+      <div class="mut">Run TurboButton.exe on the PC, then scan the QR code it shows. You can connect several PCs and work on them at the same time.</div>
       <div class="row" style="margin-top:10px"><button class="b" id="qrBtn">Scan QR code</button><span class="mut" id="connState"></span></div>
       <label>…or paste the address shown under the QR code</label>
       <div class="row"><input id="connUrl" class="grow" style="width:auto" placeholder="http://192.168.1.20:47800/#t=…" autocomplete="off" spellcheck="false"><button class="b2" id="connGo">Connect</button></div>
     </div>
+  </section>
+
+  <!-- SETTINGS (gear) -->
+  <section id="tab-settings">
     <div class="card">
       <h2>AI provider</h2>
       <div class="mut">Your key is used from this phone only and is sent straight to the provider. It never goes to the customer's PC.</div>
@@ -108,7 +152,15 @@
       <div class="row" style="margin-top:10px"><button class="b" id="aiSave">Save</button><button class="b2" id="aiTest">Test</button><span id="aiTestOut" class="mut"></span></div>
     </div>
     <div class="card">
-      <h2>Session</h2>
+      <h2>Look</h2>
+      <select id="themeSel">
+        <option value="green">Terminal — green phosphor</option>
+        <option value="amber">Terminal — amber</option>
+        <option value="modern">Modern</option>
+      </select>
+    </div>
+    <div class="card">
+      <h2>This PC</h2>
       <label class="row"><input type="checkbox" id="autoRP" style="width:auto" checked> Create a restore point automatically before the first change</label>
       <div class="mut" id="sessionInfo"></div>
       <div class="mut" id="versionInfo" style="margin-top:4px"></div>
@@ -200,7 +252,7 @@
 </main>
 
 <nav>
-  <button data-tab="setup"><b>⚙</b>Connect</button>
+  <button data-tab="setup"><b>▦</b>PCs</button>
   <button data-tab="scan"><b>⌕</b>Scan</button>
   <button data-tab="plan"><b>✦</b>Plan</button>
   <button data-tab="jobs"><b>☰</b>Fix</button>
@@ -210,14 +262,20 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.4.1";
+const PAGE_VERSION = "0.5.0";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
 function toast(msg, ms = 3500) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = "none", ms); }
 
 // ---------- state ----------
-const S = { base: "", token: "", info: null, scan: null, firstScan: null, plan: null, jobs: [], report: null, ended: false };
+// One object per connected PC; S is the PC currently shown. All PCs keep polling in the background.
+function newSession(base, token) {
+  return { id: (token || "local").slice(0, 12), base, token, name: "", info: null, scan: null, firstScan: null, plan: null, jobs: [],
+    report: null, ended: false, status: "connecting", form: {}, timer: null, savedReport: null };
+}
+let SESS = [];
+let S = newSession("", "");
 
 // NATIVE = running inside the Android app, which provides window.TurboNative.
 // All HTTP then goes through the app (no CORS / mixed-content limits) and settings live in the Android Keystore.
@@ -239,16 +297,41 @@ async function http(method, url, headers, body) {
   return { status: r.status, text: await r.text() };
 }
 
-if (NATIVE) {
-  try { const s = JSON.parse(localStorage.getItem("turbo.session") || "null"); if (s) { S.base = s.base; S.token = s.token; } } catch {}
-} else {
-  const h = location.hash.match(/t=([0-9a-f]+)/);
-  if (h) { S.token = h[1]; sessionStorage.setItem("turbo.token", h[1]); history.replaceState(null, "", location.pathname); }
-  else S.token = sessionStorage.getItem("turbo.token") || "";
+function saveSessions() {
+  if (!NATIVE) return;
+  try {
+    localStorage.setItem("turbo.sessions", JSON.stringify(SESS.filter(x => !x.ended).map(x => ({ base: x.base, token: x.token, name: x.name }))));
+    localStorage.setItem("turbo.active", S.id);
+  } catch {}
+}
+function saveState(sess = S) {
+  if (!NATIVE || !sess.token) return;
+  try { localStorage.setItem("turbo.state." + sess.id, JSON.stringify({ plan: sess.plan, report: sess.report, form: sess.form, savedReport: sess.savedReport })); } catch {}
+}
+function loadSessions() {
+  if (NATIVE) {
+    let list = []; try { list = JSON.parse(localStorage.getItem("turbo.sessions") || "[]"); } catch {}
+    const old = (() => { try { return JSON.parse(localStorage.getItem("turbo.session") || "null"); } catch { return null; } })();
+    if (old && !list.some(x => x.token === old.token)) list.push(old);   // from v0.4
+    localStorage.removeItem("turbo.session");
+    for (const x of list) {
+      const sess = newSession(x.base, x.token); sess.name = x.name || "";
+      try { Object.assign(sess, JSON.parse(localStorage.getItem("turbo.state." + sess.id) || "{}")); } catch {}
+      SESS.push(sess);
+    }
+    const act = localStorage.getItem("turbo.active");
+    S = SESS.find(x => x.id === act) || SESS[0] || S;
+  } else {
+    const h = location.hash.match(/t=([0-9a-f]+)/);
+    let tok = "";
+    if (h) { tok = h[1]; sessionStorage.setItem("turbo.token", tok); history.replaceState(null, "", location.pathname); }
+    else tok = sessionStorage.getItem("turbo.token") || "";
+    if (tok) { S = newSession("", tok); SESS = [S]; }
+  }
 }
 
-async function api(path, opts = {}) {
-  const r = await http(opts.method || "GET", S.base + path, { "X-Token": S.token, "Content-Type": "application/json" }, opts.body);
+async function api(path, opts = {}, sess = S) {
+  const r = await http(opts.method || "GET", sess.base + path, { "X-Token": sess.token, "Content-Type": "application/json" }, opts.body);
   let j = {}; try { j = JSON.parse(r.text || "{}"); } catch {}
   if (r.status >= 400) throw new Error(j.error || ("HTTP " + r.status));
   return j;
@@ -399,7 +482,7 @@ async function startScan() {
   try { await api("/api/scan", { method: "POST" }); $("scanStatus").innerHTML = '<span class="spin"></span> Scanning… this usually takes 30–90 seconds.'; pollSoon(); }
   catch (e) { toast(e.message); }
 }
-function gbRow(k, v) { return `<div>${esc(k)}</div><div>${esc(v)}</div>`; }
+function gbRow(k, v) { return `<div>${esc(k)}</div><div>${esc(v).replace(/\b(undefined|null|NaN)\b/g, "?")}</div>`; }
 function renderScan() {
   const s = S.scan; if (!s) return;
   const sys = s.system || {};
@@ -555,11 +638,12 @@ function planUser() {
   const d = deepResults();
   return "ACTION CATALOG:\n" + catalogText() + "\n\nSCAN:\n" + compactScan(S.scan) + (Object.keys(d).length ? "\n\nDEEP CHECK RESULTS (read-only checks already run):\n" + JSON.stringify(d) : "");
 }
-function usePlan(plan, source) {
+function usePlan(plan, source, sess = S) {
   if (!plan || typeof plan !== "object") throw new Error("Reply didn't contain a plan");
   plan.proposals = Array.isArray(plan.proposals) ? plan.proposals : [];
   plan.proposals.forEach(p => { p._err = validate(p); p._sel = false; });
-  plan._source = source; plan._at = Date.now(); S.plan = plan; $("planStatus").textContent = ""; renderPlan(); updateFlow();
+  plan._source = source; plan._at = Date.now(); sess.plan = plan; saveState(sess);
+  if (sess === S) { $("planStatus").textContent = ""; renderPlan(); updateFlow(); } else toast(`${sess.name}: plan ready`);
 }
 function openPaste(which) {
   const d = $(which + "Paste").closest("details"); d.open = true;
@@ -570,7 +654,8 @@ $("planBtn").onclick = async () => {
   if (getAI().provider === "manual") { $("planCopy").onclick(); openPaste("plan"); $("planStatus").textContent = "Copied. Paste it into your AI app, then paste its reply in the box below."; return; }
   $("planStatus").innerHTML = '<span class="spin"></span> The AI is reading the scan… (20–90 s, longer on a local model)';
   $("planBtn").disabled = true;
-  try { usePlan(parseJSON(await askAI(PLAN_SYSTEM, planUser(), 8000, planSchema())), "AI (" + getAI().model + ")"); }
+  const sess = S;
+  try { usePlan(parseJSON(await askAI(PLAN_SYSTEM, planUser(), 8000, planSchema())), "AI (" + getAI().model + ")", sess); }
   catch (e) { $("planStatus").textContent = "AI error: " + e.message + " — try Quick plan, or the copy/paste option below."; }
   $("planBtn").disabled = false;
 };
@@ -625,7 +710,7 @@ function renderPlan() {
       try { await queue(x.action, x.params, x.reason); x._queued = true; x._sel = false; }
       catch (e) { x._err = e.message; }
     }
-    renderPlan(); toast(`${sel.length} queued`); show("jobs");
+    renderPlan(); saveState(); toast(`${sel.length} queued`); show("jobs");
   };
   upd();
 }
@@ -879,29 +964,33 @@ $("askBtn").onclick = async () => {
 };
 
 // ---------- jobs ----------
-let pollTimer = null;
-function pollSoon() { clearTimeout(pollTimer); pollTimer = setTimeout(poll, 400); }
-async function poll() {
-  if (S.ended) return;
+function pollSoon(sess = S) { clearTimeout(sess.timer); sess.timer = setTimeout(() => poll(sess), 400); }
+async function poll(sess) {
+  if (sess.ended || !SESS.includes(sess)) return;
+  if (!sess.info) return startSession(sess);
   try {
-    const jobs = (await api("/api/jobs")) || [];
+    const jobs = (await api("/api/jobs", {}, sess)) || [];
     const scanDone = jobs.filter(j => j.action === "scan" && j.status === "done").length;
-    const prevScanDone = S.jobs.filter(j => j.action === "scan" && j.status === "done").length;
-    S.jobs = jobs; renderJobs();
-    if (S.info) $("pcName").textContent = S.info.computer;
+    const prevScanDone = sess.jobs.filter(j => j.action === "scan" && j.status === "done").length;
+    sess.jobs = jobs; sess.status = "ok";
     if (scanDone !== prevScanDone) {
-      const sc = await api("/api/scan"); S.scan = sc.latest; S.firstScan = sc.first; renderScan(); renderBA();
-      $("scanStatus").textContent = "Last scan: " + (S.scan?.scannedAt || "");
-      if (S.scan && scanDone === 1) toast("Scan finished — open Plan to analyse it");
+      const sc = await api("/api/scan", {}, sess); sess.scan = sc.latest; sess.firstScan = sc.first;
+      if (sess === S) { renderScan(); renderBA(); $("scanStatus").textContent = "Last scan: " + (S.scan?.scannedAt || ""); }
+      if (sess.scan && scanDone === 1) toast(`${sess.name}: scan finished`);
     }
-    const sj = jobs.filter(j => j.action === "scan" && (j.status === "running" || j.status === "queued")).pop();
-    if (sj) $("scanStatus").innerHTML = '<span class="spin"></span> ' + (sj.status === "queued" ? "Scan queued behind other jobs…" : esc((sj.output || "").trim().split("\n").pop() || "Scanning…"));
-    updateFlow();
+    if (sess === S) {
+      renderJobs(); $("pcName").textContent = (S.name || "PC") + (SESS.length > 1 ? " ▾" : "");
+      const sj = jobs.filter(j => j.action === "scan" && (j.status === "running" || j.status === "queued")).pop();
+      if (sj) $("scanStatus").innerHTML = '<span class="spin"></span> ' + (sj.status === "queued" ? "Scan queued behind other jobs…" : esc((sj.output || "").trim().split("\n").pop() || "Scanning…"));
+      updateFlow();
+    }
+    renderPCs();
     const busy = jobs.some(j => j.status === "running" || j.status === "queued");
-    pollTimer = setTimeout(poll, busy ? 1500 : 6000);
+    sess.timer = setTimeout(() => poll(sess), busy ? 1500 : 6000);
   } catch (e) {
-    pollTimer = setTimeout(poll, 5000);
-    $("pcName").textContent = "connection lost — retrying";
+    sess.status = "lost"; renderPCs();
+    if (sess === S) $("pcName").textContent = (sess.name || "PC") + " — reconnecting…";
+    sess.timer = setTimeout(() => poll(sess), 5000);
   }
 }
 function since(t0, t1) { if (!t0) return ""; const s = Math.round(((t1 ? new Date(t1) : new Date()) - new Date(t0)) / 1000); return s < 90 ? s + "s" : Math.round(s / 60) + "m"; }
@@ -927,7 +1016,7 @@ function resultLine(j) {
 function renderJobs() {
   const total = S.jobs.reduce((s, j) => s + (j.status === "done" && j.result?.freedBytes > 0 ? j.result.freedBytes : 0), 0);
   $("freedTotal").textContent = total ? "Freed so far: " + fmtBytes(total) : "";
-  if (!S.jobs.length) return;
+  if (!S.jobs.length) { $("jobsView").innerHTML = '<div class="mut">No jobs yet.</div>'; return; }
   $("jobsView").innerHTML = S.jobs.slice().reverse().map(j => `<div class="job"><div class="row"><span class="st ${j.status}">${j.status === "running" ? '<span class="spin"></span> ' : ""}${esc(j.status.toUpperCase())}</span>
     <b class="grow">${esc(j.title)}</b><span class="mut">${since(j.started, j.finished)}</span>${j.status === "queued" ? `<button class="b2 sm" data-cancel="${j.id}">Cancel</button>` : ""}</div>
     ${Object.keys(j.params || {}).length ? `<div class="params">${esc(JSON.stringify(j.params))}</div>` : ""}
@@ -969,7 +1058,7 @@ function deepStatusText() {
 function aiReady() { const a = getAI(); return a.provider === "manual" || a.provider === "ollama" || a.provider === "openai" || !!a.key; }
 let flowAction = null;
 function updateFlow() {
-  const connected = !!S.info && !S.ended;
+  const connected = !!S.info && !S.ended && S.status !== "lost";
   const scans = S.jobs.filter(j => j.action === "scan");
   const scanBusy = scans.some(j => j.status === "queued" || j.status === "running");
   const changes = S.jobs.filter(j => j.action !== "scan" && j.action !== "restore_point" && !isDeepJob(j) && j.status !== "cancelled");
@@ -978,9 +1067,10 @@ function updateFlow() {
   const lastScan = Math.max(0, ...scans.filter(j => j.status === "done" && j.finished).map(j => +new Date(j.finished)));
   let step, text, btn = null, act = null;
   if (S.ended) { step = 6; text = "Session ended."; if (NATIVE) { btn = "Next PC"; act = () => location.reload(); } }
+  else if (S.info && S.status === "lost") { step = 0; text = `<b>${esc(S.name)}</b> isn't reachable — same Wi-Fi? Retrying…`; btn = "Retry"; act = () => { clearTimeout(S.timer); poll(S); }; }
   else if (!connected) { step = 0; text = NATIVE ? "<b>① Connect:</b> run TurboButton.exe on the PC and scan its QR code." : "<b>① Connect:</b> open the link from the PC's QR code."; if (NATIVE) { btn = "Scan QR"; act = () => $("qrBtn").click(); } }
   else if (!S.scan) { step = 1; text = scanBusy ? '<span class="spin"></span> <b>② Scanning the PC…</b> about a minute.' : "<b>② Scan</b> the PC (read-only)."; if (!scanBusy) { btn = "Scan"; act = () => { show("scan"); startScan(); }; } }
-  else if (!S.plan) { step = 2; text = "<b>③ Plan:</b> Quick plan (no setup) or AI" + (aiReady() ? "." : " — set up AI in Connect, or use Quick plan."); btn = "Plan"; act = () => show("plan"); }
+  else if (!S.plan) { step = 2; text = "<b>③ Plan:</b> Quick plan (no setup) or AI" + (aiReady() ? "." : " — set up AI under ⚙, or use Quick plan."); btn = "Plan"; act = () => show("plan"); }
   else if (!changes.length) { step = 3; text = "<b>④ Fix:</b> tick the fixes you approve, then press Run."; btn = "Plan"; act = () => show("plan"); }
   else if (busy.length) { step = 3; text = `<span class="spin"></span> <b>④ Fixing…</b> ${busy.length} left.`; btn = "Watch"; act = () => show("jobs"); }
   else if (lastScan < lastChange) { step = 4; text = scanBusy ? '<span class="spin"></span> <b>⑤ Rescanning…</b>' : "<b>⑤ Check:</b> rescan to confirm the results."; if (!scanBusy) { btn = "Rescan"; act = () => { startScan(); }; } }
@@ -1042,11 +1132,16 @@ function basicReport() {
     issuesFound: q.findings.filter(f => f.severity !== "info").map(f => f.title + ": " + f.detail).concat(S.jobs.filter(j => j.status === "failed").map(j => "Could not complete: " + j.title + " (" + j.error + ")")),
     recommendations: q.manual.map(m => m.title + " — " + m.detail), technicalNotes: "" };
 }
-function useReport(r) { if (!r || typeof r !== "object") throw new Error("Reply didn't contain a report"); S.report = r; renderReport(); updateFlow(); }
+function useReport(r, sess = S) {
+  if (!r || typeof r !== "object") throw new Error("Reply didn't contain a report");
+  sess.report = r; saveState(sess);
+  if (sess === S) { renderReport(); updateFlow(); } else toast(`${sess.name}: report ready`);
+}
 $("reportBtn").onclick = async () => {
   if (getAI().provider === "manual") { $("reportCopy").onclick(); openPaste("report"); $("reportStatus").textContent = "Copied. Paste it into your AI app, then paste its reply in the box below."; return; }
   $("reportStatus").innerHTML = '<span class="spin"></span> Writing report…';
-  try { useReport(parseJSON(await askAI(REPORT_SYSTEM, reportUser(), 4000, reportSchema()))); $("reportStatus").textContent = ""; }
+  const sess = S;
+  try { useReport(parseJSON(await askAI(REPORT_SYSTEM, reportUser(), 4000, reportSchema())), sess); if (sess === S) $("reportStatus").textContent = ""; }
   catch (e) { $("reportStatus").textContent = "AI unavailable (" + e.message + ") — made a basic report instead."; useReport(basicReport()); }
 };
 $("reportBasicBtn").onclick = () => { $("reportStatus").textContent = ""; useReport(basicReport()); };
@@ -1083,7 +1178,7 @@ function reportDoc() {
 }
 function renderReport() {
   $("reportCard").style.display = "block"; $("reportView").innerHTML = reportHTML();
-  if (NATIVE) { const d = reportDoc(); S.savedReport = d.name; window.TurboNative.saveReport(d.name, d.doc); loadHistory(); }
+  if (NATIVE) { const d = reportDoc(); if (!S.savedReport) S.savedReport = d.name; window.TurboNative.saveReport(S.savedReport, d.doc); saveState(); loadHistory(); }
 }
 $("dlBtn").onclick = () => {
   if (NATIVE) { const d = reportDoc(); window.TurboNative.saveReport(S.savedReport || d.name, d.doc); window.TurboNative.shareReport(S.savedReport || d.name); return; }
@@ -1113,21 +1208,120 @@ function loadHistory() {
   $("historyList").querySelectorAll("[data-del]").forEach(b => b.onclick = () => { if (confirm("Delete this report from the phone?")) { window.TurboNative.deleteReport(b.dataset.del); $("historyView").innerHTML = ""; loadHistory(); } });
 }
 
-// ---------- session ----------
+// ---------- look ----------
+function applyTheme(t) {
+  document.body.className = t === "modern" ? "" : t === "amber" ? "term amber" : "term";
+  try { localStorage.setItem("turbo.theme", t); } catch {}
+  $("themeSel").value = t;
+}
+$("themeSel").onchange = () => applyTheme($("themeSel").value);
+applyTheme((() => { try { return localStorage.getItem("turbo.theme") || "green"; } catch { return "green"; } })());
+async function bootScreen() {
+  if (!document.body.classList.contains("term") || sessionStorage.getItem("turbo.booted")) return;
+  sessionStorage.setItem("turbo.booted", "1");
+  const el = $("boot"); el.style.display = "block";
+  let skip = false; el.onclick = () => { skip = true; };
+  const n = (() => { try { return JSON.parse(localStorage.getItem("turbo.sessions") || "[]").length; } catch { return 0; } })();
+  const lines = ["TURBO BUTTON TECHNICIAN TERMINAL v" + PAGE_VERSION, "", "> POWER-ON SELF TEST ........ OK", "> LOADING DIAGNOSTICS ....... OK",
+    "> AI LINK ................... " + (getAI().provider === "manual" ? "COPY/PASTE" : getAI().provider.toUpperCase()),
+    "> SAVED PCs ................. " + n, "", "READY"];
+  let out = "";
+  for (const l of lines) {
+    for (const ch of l) { if (skip) break; out += ch; el.innerHTML = esc(out) + '<span class="cur">█</span>'; await new Promise(r => setTimeout(r, 9)); }
+    out += "\n"; if (!skip) await new Promise(r => setTimeout(r, 70));
+  }
+  el.innerHTML = esc(lines.join("\n")) + '<span class="cur">█</span>';
+  await new Promise(r => setTimeout(r, skip ? 0 : 350));
+  el.style.display = "none";
+}
+
+// ---------- sessions: connect, switch, end ----------
 $("autoRP").onchange = async () => { try { await api("/api/settings", { method: "POST", body: JSON.stringify({ autoRestorePoint: $("autoRP").checked }) }); } catch (e) { toast(e.message); } };
+$("gearBtn").onclick = () => show("settings");
+$("pcName").onclick = () => show("setup");
+for (const id of ["rCustomer", "rRef", "rTech", "rNotes"]) $(id).addEventListener("input", () => { S.form[id] = $(id).value; saveState(); });
+
+function pcStatus(sess) {
+  if (sess.status === "lost") return ["bad", "Not reachable — retrying"];
+  if (!sess.info) return ["mut", "Connecting…"];
+  const scanBusy = sess.jobs.some(j => j.action === "scan" && (j.status === "running" || j.status === "queued"));
+  const fix = sess.jobs.filter(j => j.action !== "scan" && (j.status === "running" || j.status === "queued"));
+  if (scanBusy && !sess.scan) return ["acc", "Scanning…"];
+  if (fix.length) return ["acc", `Working — ${fix.length} left`];
+  if (scanBusy) return ["acc", "Rescanning…"];
+  if (sess.report) return ["ok", "Report done"];
+  if (sess.jobs.some(j => j.action !== "scan" && j.status === "done")) return ["ok", "Fixes done — check & report"];
+  if (sess.plan) return ["ok", "Plan ready"];
+  if (sess.scan) return ["ok", "Scan ready"];
+  return ["mut", "Connected"];
+}
+function renderPCs() {
+  const list = $("pcList"); if (!list) return;
+  if (!SESS.length) { list.innerHTML = '<div class="mut">No PCs connected yet.</div>'; return; }
+  list.innerHTML = SESS.map((x, i) => {
+    const [cls, txt] = pcStatus(x);
+    return `<div class="li" style="${x === S ? "border-left:3px solid var(--acc);padding-left:8px" : ""}"><div class="t"><b>${esc(x.name || x.base || "This PC")}</b>${x === S ? ' <span class="mut">(showing)</span>' : ""}
+      <div style="font-size:13px;color:var(--${cls === "mut" ? "mut" : cls})">${esc(txt)}</div></div>
+      ${x === S ? "" : `<button class="b2 sm" data-open="${i}">Open</button>`}
+      ${x.status === "lost" ? `<button class="b2 sm" data-retry="${i}">Retry</button>` : ""}
+      ${NATIVE ? `<button class="b2 sm" data-forget="${i}" title="Forget this PC on the phone">✕</button>` : ""}</div>`;
+  }).join("");
+  list.querySelectorAll("[data-open]").forEach(b => b.onclick = () => { switchTo(SESS[+b.dataset.open]); show("scan"); });
+  list.querySelectorAll("[data-retry]").forEach(b => b.onclick = () => { const x = SESS[+b.dataset.retry]; clearTimeout(x.timer); x.info ? poll(x) : startSession(x); });
+  list.querySelectorAll("[data-forget]").forEach(b => b.onclick = () => {
+    const x = SESS[+b.dataset.forget];
+    if (!confirm(`Forget ${x.name || "this PC"} on the phone? (The agent keeps running on the PC; use End to close it there.)`)) return;
+    dropSession(x);
+  });
+  $("pcName").textContent = S.info ? (S.name || "PC") + (SESS.length > 1 ? " ▾" : "") : (SESS.length ? "connecting…" : "no PC");
+}
+function dropSession(x) {
+  clearTimeout(x.timer); x.ended = true;
+  SESS = SESS.filter(y => y !== x);
+  try { localStorage.removeItem("turbo.state." + x.id); } catch {}
+  if (x === S) { S = SESS[0] || newSession("", ""); renderSession(); }
+  saveSessions(); renderPCs(); updateFlow();
+}
+function switchTo(sess) {
+  if (sess === S) return;
+  S = sess; saveSessions(); renderSession();
+}
+function renderSession() {
+  if (S.info) {
+    $("autoRP").checked = S.info.autoRestorePoint;
+    $("sessionInfo").textContent = `Agent ${S.info.version} on ${S.info.computer}, started ${new Date(S.info.startedAt).toLocaleTimeString()}.`;
+    buildManual();
+  } else $("sessionInfo").textContent = "No PC selected.";
+  $("scanView").innerHTML = ""; if (S.scan) renderScan();
+  $("scanStatus").textContent = S.scan ? "Last scan: " + (S.scan.scannedAt || "") : "";
+  $("deepStatus").textContent = "";
+  $("planView").innerHTML = ""; if (S.plan) renderPlan();
+  $("planStatus").textContent = S.plan ? "" : "Run a scan first. Quick plan uses built-in rules: instant, offline and free. Nothing runs until you tick it and press Run.";
+  renderJobs(); renderBA();
+  for (const id of ["rCustomer", "rRef", "rTech", "rNotes"]) $(id).value = S.form[id] || "";
+  $("reportStatus").textContent = "";
+  if (S.report) { $("reportCard").style.display = "block"; $("reportView").innerHTML = reportHTML(); } else $("reportCard").style.display = "none";
+  renderPCs(); updateFlow();
+}
+
 $("endBtn").onclick = async () => {
   if (!S.info) { toast("Not connected to a PC"); return; }
   const busy = S.jobs.some(j => j.status === "running");
-  if (!confirm((busy ? "A job is still running and will be stopped. " : "") + "End the session? The agent will clean up and close on the PC.")) return;
+  if (!confirm((busy ? "A job is still running and will be stopped. " : "") + `End the session on ${S.name}? The agent cleans up and closes on that PC.`)) return;
   try { await api("/api/finish", { method: "POST" }); } catch {}
-  S.ended = true; clearTimeout(pollTimer); $("pcName").textContent = "ended"; updateFlow();
-  if (NATIVE) { localStorage.removeItem("turbo.session"); $("endedHint").textContent = "Your report is saved on this phone (Report tab)."; }
-  show("ended");
-  document.querySelectorAll("nav button").forEach(b => { if (b.dataset.tab !== "report") b.disabled = true; });
+  const ended = S;
+  if (NATIVE) {
+    dropSession(ended);
+    toast(`${ended.name}: session ended. Its report is saved on this phone.`, 5000);
+    show(SESS.length ? "setup" : "ended");
+    $("endedHint").textContent = "Your reports are saved on this phone (Report tab).";
+  } else {
+    S.ended = true; clearTimeout(S.timer); $("pcName").textContent = "ended"; updateFlow(); show("ended");
+    document.querySelectorAll("nav button").forEach(b => { if (b.dataset.tab !== "report") b.disabled = true; });
+  }
 };
-$("nextPc").onclick = () => location.reload();
+$("nextPc").onclick = () => show("setup");
 
-// ---------- connecting (app) ----------
 function parseConnect(txt) {
   let u; try { u = new URL(String(txt).trim()); } catch { throw new Error("That isn't a Turbo Button address"); }
   const t = (u.hash.match(/t=([0-9a-f]{32})/) || [])[1];
@@ -1136,11 +1330,14 @@ function parseConnect(txt) {
 }
 async function connectTo(txt) {
   let c; try { c = parseConnect(txt); } catch (e) { toast(e.message); return; }
-  $("connState").innerHTML = '<span class="spin"></span> Connecting…';
-  S.base = c.base; S.token = c.token;
-  const ok = await startSession();
-  if (ok) { localStorage.setItem("turbo.session", JSON.stringify(c)); $("connState").textContent = ""; }
-  else $("connState").textContent = "Couldn't reach the PC. Same Wi-Fi? Is Turbo Button still running?";
+  let sess = SESS.find(x => x.token === c.token);
+  if (sess) { sess.base = c.base; switchTo(sess); if (sess.status === "lost") { clearTimeout(sess.timer); poll(sess); } show("scan"); return; }
+  // Same PC address with a new token = the agent was restarted: replace the old entry.
+  for (const old of SESS.filter(x => x.base === c.base)) dropSession(old);
+  sess = newSession(c.base, c.token); SESS.push(sess); switchTo(sess);
+  $("connState").innerHTML = '<span class="spin"></span> Connecting…'; $("connUrl").value = "";
+  const ok = await startSession(sess);
+  $("connState").textContent = ok ? "" : "Couldn't reach that PC yet — same Wi-Fi? Is Turbo Button still running? It keeps retrying.";
 }
 if (NATIVE) {
   $("connectCard").style.display = "block"; $("rememberRow").style.display = "none";
@@ -1148,36 +1345,41 @@ if (NATIVE) {
   $("connGo").onclick = () => connectTo($("connUrl").value);
 } else $("nextPcRow").style.display = "none";
 
-async function startSession() {
+async function startSession(sess) {
+  clearTimeout(sess.timer);
   try {
-    S.info = await api("/api/info");
-    S.ended = false; S.jobs = []; S.plan = null; $("planView").innerHTML = "";
-    $("pcName").textContent = S.info.computer;
-    $("autoRP").checked = S.info.autoRestorePoint;
-    $("sessionInfo").textContent = `Agent ${S.info.version} on ${S.info.computer}, started ${new Date(S.info.startedAt).toLocaleTimeString()}.`;
-    buildManual();
-    const sc = await api("/api/scan"); S.scan = sc.latest; S.firstScan = sc.first; if (S.scan) { renderScan(); renderBA(); }
-    S.jobs = (await api("/api/jobs")) || [];
-    if (!S.scan && !S.jobs.some(j => j.action === "scan")) await startScan();   // first scan starts automatically (read-only)
-    show("scan"); updateFlow();
-    pollSoon();
+    const info = await api("/api/info", {}, sess);
+    sess.info = info; sess.name = info.computer; sess.ended = false; sess.status = "ok";
+    const sc = await api("/api/scan", {}, sess); sess.scan = sc.latest; sess.firstScan = sc.first;
+    sess.jobs = (await api("/api/jobs", {}, sess)) || [];
+    if (!sess.scan && !sess.jobs.some(j => j.action === "scan")) {   // first scan starts automatically (read-only)
+      await api("/api/scan", { method: "POST" }, sess);
+      sess.jobs = (await api("/api/jobs", {}, sess)) || [];
+    }
+    saveSessions();
+    if (sess === S) { renderSession(); show("scan"); }
+    renderPCs(); pollSoon(sess);
     return true;
   } catch (e) {
-    $("pcName").textContent = "not connected"; toast("Could not connect: " + e.message, 6000); show("setup");
+    sess.status = "lost"; renderPCs();
+    if (sess === S) { $("pcName").textContent = (sess.name || "PC") + " — not reachable"; updateFlow(); }
+    sess.timer = setTimeout(() => startSession(sess), 8000);
     return false;
   }
 }
 
 (async function init() {
   $("versionInfo").textContent = (NATIVE ? "Turbo Button app " : "Turbo Button control page ") + PAGE_VERSION;
-  loadAI(); loadHistory();
-  if (!S.token) {
-    $("pcName").textContent = "not connected"; show("setup"); updateFlow();
+  loadAI(); loadHistory(); loadSessions();
+  bootScreen();
+  renderSession();
+  if (!SESS.length) {
+    show("setup");
     if (!NATIVE) toast("Scan the QR code shown on the PC to connect.", 8000);
     return;
   }
-  const ok = await startSession();
-  if (!ok && NATIVE) localStorage.removeItem("turbo.session");
+  show(S.scan ? "scan" : "setup");
+  await Promise.all(SESS.map(x => startSession(x)));
   updateFlow();
 })();
 </script>

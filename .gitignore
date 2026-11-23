@@ -8,3 +8,4 @@ android/local.properties
 *.iml
 TurboButton.exe
 *.apk
+agent/*.syso
