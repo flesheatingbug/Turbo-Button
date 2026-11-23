@@ -7,6 +7,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -162,12 +163,15 @@ func openScreen(url, workDir string) error {
 	os.MkdirAll(prof, 0700)
 	os.Chown(prof, g.uid, g.uid)
 	env := append([]string{"HOME=" + homeOf(g.name)}, g.env...)
+	addDesktopEntry(g, prof)
 	for _, b := range []string{"chromium", "chromium-browser", "google-chrome-stable", "google-chrome", "brave-browser", "brave", "microsoft-edge-stable", "microsoft-edge", "vivaldi-stable", "vivaldi"} {
 		if !have(b) {
 			continue
 		}
 		args := append([]string{"-u", g.name, "--", "env"}, env...)
-		args = append(args, b, "--app="+url, "--user-data-dir="+prof, "--window-size=1100,780", "--no-first-run", "--no-default-browser-check")
+		// --class names the window "TurboButton" (X11 WM_CLASS / Wayland app_id), so the desktop
+		// shows our icon from the temporary TurboButton.desktop instead of the browser's.
+		args = append(args, b, "--class=TurboButton", "--app="+url, "--user-data-dir="+prof, "--window-size=1100,780", "--no-first-run", "--no-default-browser-check")
 		c := exec.Command("runuser", args...)
 		c.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 		if err := c.Start(); err == nil {
@@ -213,7 +217,62 @@ func desktopAlert(msg string) {
 	}
 }
 
+const desktopMarker = "X-TurboButton-Temporary=true"
+
+func desktopEntryPath(g *guiUser) string {
+	return filepath.Join(homeOf(g.name), ".local/share/applications/TurboButton.desktop")
+}
+
+// addDesktopEntry writes a hidden TurboButton.desktop (and the icon, in the screen's temporary
+// profile folder) for the desktop user while the session runs. It's removed by removeDesktopEntry.
+func addDesktopEntry(g *guiUser, prof string) {
+	p := desktopEntryPath(g)
+	if b, err := os.ReadFile(p); err == nil && !strings.Contains(string(b), desktopMarker) {
+		return // the user has their own; leave it alone
+	}
+	icon := filepath.Join(prof, "turbobutton.png")
+	if os.WriteFile(icon, iconPNG, 0644) != nil {
+		return
+	}
+	os.Chown(icon, g.uid, g.uid)
+	dir := filepath.Dir(p)
+	if _, err := os.Stat(dir); err != nil {
+		if os.MkdirAll(dir, 0755) != nil {
+			return
+		}
+		for d := dir; d != homeOf(g.name) && d != "/"; d = filepath.Dir(d) {
+			os.Chown(d, g.uid, g.uid)
+		}
+	}
+	entry := "[Desktop Entry]\nType=Application\nName=Turbo Button\nComment=PC service in progress\nIcon=" + icon +
+		"\nExec=true\nNoDisplay=true\nStartupWMClass=TurboButton\n" + desktopMarker + "\n"
+	if os.WriteFile(p, []byte(entry), 0644) == nil {
+		os.Chown(p, g.uid, g.uid)
+		for _, k := range []string{"kbuildsycoca6", "kbuildsycoca5"} { // KDE: pick it up right away
+			if have(k) {
+				args := append([]string{"-u", g.name, "--", "env", "HOME=" + homeOf(g.name)}, g.env...)
+				ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+				exec.CommandContext(ctx, "runuser", append(args, k)...).Run()
+				cancel()
+				break
+			}
+		}
+	}
+}
+
+func removeDesktopEntry() {
+	g := desktopUser()
+	if g == nil {
+		return
+	}
+	p := desktopEntryPath(g)
+	if b, err := os.ReadFile(p); err == nil && strings.Contains(string(b), desktopMarker) {
+		os.Remove(p)
+	}
+}
+
 func closeScreen(workDir string) {
+	removeDesktopEntry()
 	if mockMode() {
 		return
 	}

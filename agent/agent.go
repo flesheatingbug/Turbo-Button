@@ -27,10 +27,13 @@ var scriptFS embed.FS
 //go:embed web/index.html
 var indexHTML []byte
 
+//go:embed winres/icon.png
+var iconPNG []byte
+
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.9.3"
+const Version = "0.9.4"
 
 type Job struct {
 	ID       int             `json:"id"`
@@ -393,6 +396,11 @@ func (a *Agent) Handler() http.Handler {
 		w.Write(indexHTML)
 	})
 	// Customer screen on the PC itself: read-only, local connections only, own view key.
+	mux.HandleFunc("GET /icon.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "max-age=86400")
+		w.Write(iconPNG)
+	})
 	mux.HandleFunc("GET /screen", func(w http.ResponseWriter, r *http.Request) {
 		if !isLocal(r) {
 			http.NotFound(w, r)
