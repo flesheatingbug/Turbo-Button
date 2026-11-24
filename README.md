@@ -243,6 +243,7 @@ The report also has a **Basic report (no AI)** button. It builds the report from
 - 🏢 **Business PCs are left alone.** Proxy, DNS and browser-policy resets are never proposed on domain-joined PCs.
 - 💾 **Backups.** The hosts file and browser policies are backed up before they're reset.
 - 🔐 **Locked to your phone.** The agent only accepts requests carrying the session key from the QR code. The customer screen only answers the PC itself.
+- 💤 **Stays awake.** While a session runs, the PC won't sleep and the screen won't turn off or lock (on Linux, closing a laptop's lid doesn't suspend it either). Normal power settings come back when the session ends.
 - 🧹 **Leaves no trace.** When the session ends, the agent closes its firewall rule and deletes its temporary files.
 
 ---

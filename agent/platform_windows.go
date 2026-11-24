@@ -88,14 +88,15 @@ func removeFirewallRule() { netsh("advfirewall", "firewall", "delete", "rule", "
 func mockMode() bool                                                  { return false }
 func mockRun(string, map[string]string, func(string)) ([]byte, error) { return nil, nil }
 
-// keepAwake stops Windows sleeping while the agent runs (the screen may still turn off).
+// keepAwake stops Windows sleeping, and the screen turning off or locking, while the agent runs,
+// so long jobs finish and the customer screen stays visible. Back to normal when the session ends.
 // Returns a func that restores normal behaviour.
 func keepAwake() func() {
 	done := make(chan struct{})
 	go func() {
 		runtime.LockOSThread() // execution state is per thread: keep it on one
 		set := kernel32.NewProc("SetThreadExecutionState")
-		set.Call(uintptr(0x80000000 | 0x00000001)) // ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+		set.Call(uintptr(0x80000000 | 0x00000001 | 0x00000002)) // ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
 		<-done
 		set.Call(uintptr(0x80000000)) // ES_CONTINUOUS: back to normal
 	}()
