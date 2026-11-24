@@ -24,7 +24,7 @@ jobs:
           go vet ./...
           GOOS=windows GOARCH=amd64 go vet ./...
           go test ./...
-          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ../TurboButton.exe .
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Build=${{ github.run_number }}" -o ../TurboButton.exe .
       - uses: actions/upload-artifact@v4
         with:
           name: TurboButton-windows
@@ -40,12 +40,12 @@ jobs:
       - name: Build static binaries
         working-directory: agent
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o ../TurboButton-linux-x86_64 .
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o ../TurboButton-linux-arm64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Build=${{ github.run_number }}" -o ../TurboButton-linux-x86_64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Build=${{ github.run_number }}" -o ../TurboButton-linux-arm64 .
           file ../TurboButton-linux-*
       - name: Smoke test the real Linux scan
         run: |
-          sudo TURBO_RESUME_DIR=/tmp/tbci ./TurboButton-linux-x86_64 --no-screen > agent.log 2>&1 &
+          sudo TURBO_NO_UPDATE=1 TURBO_RESUME_DIR=/tmp/tbci ./TurboButton-linux-x86_64 --no-screen > agent.log 2>&1 &
           sleep 3
           TOK=$(grep -o '#t=[0-9a-f]*' agent.log | head -1 | cut -c4-)
           curl -sf -H "X-Token: $TOK" http://127.0.0.1:47800/api/info | grep -q '"os":"linux"'
@@ -126,7 +126,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
+          (cd out && sha256sum TurboButton.exe TurboButton-x86_64.AppImage TurboButton-linux-x86_64 TurboButton-linux-arm64 TurboButton.apk > SHA256SUMS && cat SHA256SUMS)
           gh release delete latest -R "$REPO" --yes --cleanup-tag || true
-          gh release create latest out/TurboButton.exe out/TurboButton-x86_64.AppImage out/TurboButton-linux-x86_64 out/TurboButton-linux-arm64 out/TurboButton.apk -R "$REPO" --prerelease \
+          gh release create latest out/TurboButton.exe out/TurboButton-x86_64.AppImage out/TurboButton-linux-x86_64 out/TurboButton-linux-arm64 out/TurboButton.apk out/SHA256SUMS -R "$REPO" --prerelease \
             --target "$GITHUB_SHA" --title "Latest build $(date -u '+%Y-%m-%d %H:%M') UTC" \
             --notes "Build ${GITHUB_RUN_NUMBER}, commit ${GITHUB_SHA::7}. Install TurboButton.apk on your phone; copy TurboButton.exe (Windows) and TurboButton-x86_64.AppImage (Linux) to a USB stick."

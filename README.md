@@ -159,6 +159,7 @@ In the app, tap **Scan QR code** and point it at the PC's screen. The scan start
 
 | Option | What it does |
 |---|---|
+| `--no-update` | Don't check GitHub for a newer build on launch. |
 | `--no-screen` | Don't open the customer screen. The QR code and log stay in the console. |
 | `--console` | Keep the console window visible alongside the customer screen. On Linux, a double-clicked AppImage opens a terminal for it. |
 
@@ -274,6 +275,13 @@ A full-window view on the PC in the same retro style. It shows the QR code until
 <summary><b>🔔 Notifications</b></summary>
 
 With the app in the background, the phone tells you when a scan finishes, when all fixes on a PC are done (with how many failed and how much space was freed), when something needs you at the PC (like an antivirus uninstaller waiting for clicks), or when a PC drops off mid-job. While jobs run, a quiet "Working on…" notification keeps the app awake so alerts still arrive with the screen off. Turn them off under **⚙ → Notifications**.
+
+</details>
+
+<details>
+<summary><b>⬆ Agent updates (Windows and Linux)</b></summary>
+
+When it starts, the agent checks the Latest build on GitHub (5-second limit, so no internet just means it carries on). If there's a newer build, it downloads it, checks it against the published SHA-256 checksum, puts it in place of the old file (so the copy on your USB stick stays current) and restarts itself. If the stick is read-only, it runs the new build from a temporary copy instead. Skip it with `--no-update`.
 
 </details>
 

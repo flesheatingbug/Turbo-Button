@@ -17,6 +17,9 @@ const port = 47800
 
 func main() {
 	vt := setupConsole()
+	if selfUpdate() {
+		return
+	}
 	if !isAdmin() {
 		fmt.Println("Turbo Button needs administrator rights. Asking Windows to restart it as administrator...")
 		if err := relaunchAsAdmin(); err != nil {

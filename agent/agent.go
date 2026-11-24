@@ -33,7 +33,7 @@ var iconPNG []byte
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.9.12"
+const Version = "0.9.13"
 
 type Job struct {
 	ID       int             `json:"id"`
@@ -457,7 +457,7 @@ func (a *Agent) Handler() http.Handler {
 		host := hostName()
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		writeJSON(w, map[string]any{"agent": "Turbo Button", "version": Version, "computer": host, "catalog": activeCatalog(), "os": agentOS(),
+		writeJSON(w, map[string]any{"agent": "Turbo Button", "version": Version, "computer": host, "catalog": activeCatalog(), "os": agentOS(), "build": Build,
 			"machineId": a.machineID, "resumed": a.resumed,
 			"autoRestorePoint": a.autoRestore, "restorePointDone": a.restoreTried, "startedAt": a.started,
 			"protectedServices": protectedServiceList(), "protectedAppPrefixes": protectedAppPrefixes})
