@@ -330,7 +330,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.9.8";
+const PAGE_VERSION = "0.9.9";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -628,10 +628,26 @@ function renderScan() {
   if (isLinux()) html += `<div class="card"><details><summary>Flatpak / Snap apps (${apps.length})</summary><div class="list">` + apps.map(x => `<div class="li"><div class="t">${esc(x.name)}<div class="params">${esc(x.kind)} ${esc(x.version || "")}</div></div></div>`).join("") + `</div></details></div>`;
   else html += `<div class="card"><details><summary>Store apps (${apps.filter(a => a.likelyBloat).length} likely bloat of ${apps.length})</summary><div class="list">` + apps.map((x, i) =>
     `<div class="li"><div class="t">${x.likelyBloat ? "⚑ " : ""}${esc(x.name)}<div class="params">${esc(x.publisher)}</div></div><button class="b2 sm" data-app="${esc(x.name)}">Remove</button></div>`).join("") + `</div></details></div>`;
+  if (!isLinux() && (s.securitySoftware || []).length) html += `<div class="card"><h2>Antivirus &amp; security software (${s.securitySoftware.length})</h2><div class="mut" style="margin:-4px 0 6px">Windows has Microsoft Defender built in. Keep only one antivirus; expired trials and duplicates slow the PC down.</div><div class="list">` + s.securitySoftware.map((x, i) =>
+    `<div class="li"><div class="t">${esc(x.name)}<div class="params">${esc(x.publisher || "")} ${esc(x.version || "")}${x.uninstall === "interactive" ? " · uninstaller opens on the PC" : ""}</div></div><button class="b2 sm" data-av="${i}">Remove</button></div>`).join("") + `</div></div>`;
+  if (!isLinux() && (s.office || []).length) html += `<div class="card"><h2>Microsoft Office (${s.office.length})</h2>${s.office.length > 1 ? '<div class="mut" style="margin:-4px 0 6px">More than one Office version: they can clash. Remove the one the customer doesn\'t use.</div>' : ""}<div class="list">` + s.office.map((x, i) =>
+    `<div class="li"><div class="t">${esc(x.name)}<div class="params">${esc(x.version || "")} · ${esc(x.kind)}</div></div><button class="b2 sm" data-office="${i}">Remove</button></div>`).join("") + `</div></div>`;
   html += `<div class="card"><details><summary>Installed programs (${(s.programs || []).length})</summary><div class="list">` + (s.programs || []).map(p =>
     `<div class="li"><div class="t">${esc(p.name)}<div class="params">${esc(p.publisher || "")} ${esc(p.version || "")}${p.sizeMB ? " · " + esc(p.sizeMB) + " MB" : ""}</div></div></div>`).join("") + `</div></details></div>`;
   if ((s.errors || []).length) html += `<div class="card"><details><summary>Scan warnings (${s.errors.length})</summary><pre>${esc(s.errors.join("\n"))}</pre></details></div>`;
   $("scanView").innerHTML = html;
+  $("scanView").querySelectorAll("[data-av]").forEach(b => b.onclick = async () => {
+    const x = s.securitySoftware[+b.dataset.av];
+    if (!await ask({ title: "Remove this antivirus?", facts: [x.name, x.uninstall === "interactive" ? "Its uninstaller opens on the PC: finish it there" : "Removed silently"],
+      note: "Microsoft Defender takes over after a restart. Check with the customer first, especially if they paid for it.", ok: "Remove", danger: true })) return;
+    try { await queue("av_remove", { name: x.name }, "Removed manually from scan"); toast("Queued"); } catch (e) { toast(e.message); }
+  });
+  $("scanView").querySelectorAll("[data-office]").forEach(b => b.onclick = async () => {
+    const x = s.office[+b.dataset.office];
+    if (!await ask({ title: "Remove Microsoft Office?", facts: [x.name, (x.version || "") + " · " + x.kind],
+      note: "Removes Word, Excel, Outlook and the rest of this install. Documents and Outlook data files stay. The customer needs their Microsoft account or product key to reinstall.", ok: "Remove Office", danger: true })) return;
+    try { await queue("office_remove", { name: x.name }, "Removed manually from scan"); toast("Queued"); } catch (e) { toast(e.message); }
+  });
   $("scanView").querySelectorAll("[data-st]").forEach(b => b.onclick = async () => {
     const x = st[+b.dataset.st];
     const inf = startupInfo(x);
@@ -840,6 +856,8 @@ Rules:
 - Prefer fixing root causes found in events/health (failing disk, crashes, low space) over cosmetic tweaks. Flag hardware problems in findings/manual.
 - Put long actions (sfc, dism_restore, defender full scan) last, and dism_restore before sfc if corruption is suspected.
 - Updates: propose windows_update {mode:"install"} when updates are stale (drivers:true only if there are problem devices), and app_updates {mode:"install"} when winget is available. Use reset_windows_update first only if updates haven't installed for 60+ days.
+- av_remove (exact name from scan.securitySoftware) for expired/preinstalled antivirus trials or when two antiviruses are installed: risk high, askCustomer true, keep one. Never leave the PC without protection; Defender takes over after the restart. Prefer av_remove over program_uninstall for security software.
+- office_remove (exact name from scan.office) only for duplicate Office versions, expired trials, or a broken Office before a reinstall: risk high, askCustomer true. Mention in "manual" that the customer needs their Microsoft account/product key to reinstall.
 - program_uninstall only for clear junk/trialware/adware (askCustomer true unless it is obviously malicious); use the exact name from scan.programs. If uninstall is "none"/"interactive" with no winget, put it in "manual" instead.
 - Adware: hijacked browser search/homepage, forced browser policies, odd proxies, manual DNS to unknown servers and hosts-file redirects are red flags. NEVER propose remove_browser_policies, reset_dns or reset_proxy on a domain-joined (business) PC; elsewhere set askCustomer true.
 - Blue screens: interpret bugcheck codes (driver vs RAM vs disk vs GPU vs hardware) in findings; propose schedule_memory_test for RAM-type codes and schedule_chkdsk for disk-type codes.
@@ -1042,7 +1060,18 @@ function quickPlanWin(s) {
     prop("app_remove", { name: a.name }, junk ? "Preinstalled app few people use." : "Preinstalled/promoted app — remove only if the customer doesn't use it.", "medium", !junk);
   }
   // Desktop programs: uninstall junk where a silent uninstaller exists, otherwise hand to the tech
-  const badProgs = (s.programs || []).filter(p => JUNK_PROGRAMS.test(p.name + " " + (p.publisher || "")));
+  const avNames = new Set((s.securitySoftware || []).map(x => x.name));
+  const badProgs = (s.programs || []).filter(p => JUNK_PROGRAMS.test(p.name + " " + (p.publisher || "")) && !avNames.has(p.name));
+  // Antivirus: preinstalled trials (McAfee, Norton…) and duplicates
+  const avs = s.securitySoftware || [];
+  const trialAV = avs.filter(x => /mcafee|norton|symantec|totalav|scanguard|pc matic|total defense/i.test(x.name + " " + (x.publisher || "")));
+  for (const x of trialAV) prop("av_remove", { name: x.name }, `${x.name} is usually a preinstalled trial. Defender protects the PC for free once it's gone.` + (x.uninstall === "interactive" ? " Its uninstaller opens on the PC." : ""), "high", true);
+  const mainAV = avs.filter(x => !/(malwarebytes)/i.test(x.name));
+  if (mainAV.length > 1) find("warn", "More than one antivirus", mainAV.map(x => x.name).join(", ") + " — they slow the PC down and can conflict. Keep one.");
+  if (trialAV.length) M.push({ title: "If an antivirus won't uninstall", detail: "Use the vendor's removal tool (McAfee MCPR, Norton Remove and Reinstall, Avast/AVG Clear), then restart." });
+  // Office: several versions side by side
+  const off = s.office || [];
+  if (off.length > 1) { find("warn", "More than one Microsoft Office", off.map(x => x.name).join(", ") + " — they can clash (file associations, Outlook errors)."); M.push({ title: "Choose which Office to keep", detail: "Ask the customer which Office they paid for, then remove the other with Remove Microsoft Office on the Scan tab." }); }
   const canWinget = !!s.updates?.wingetAvailable;
   const manualProgs = [];
   for (const p of badProgs) {
@@ -1173,7 +1202,7 @@ function quickPlanWin(s) {
   if (needsRestart) prop("restart_pc", { minutes: "1" }, "Finish updates/scheduled checks. Do this LAST — write the report first; the session ends when the PC restarts.", "medium", true);
 
   // Order: quick cleanups → startup/apps → settings → security → disk → long repairs → restart last
-  const order = ["disk_usage", "cleanup", "component_cleanup", "program_uninstall", "startup_disable", "app_remove", "remove_browser_policies", "reset_proxy", "reset_dns", "reset_hosts",
+  const order = ["disk_usage", "cleanup", "component_cleanup", "program_uninstall", "av_remove", "office_remove", "startup_disable", "app_remove", "remove_browser_policies", "reset_proxy", "reset_dns", "reset_hosts",
     "fast_startup", "privacy", "defender_update", "defender_scan", "chkdsk_scan", "optimize_drive", "reset_windows_update", "dism_restore", "sfc", "app_updates", "windows_update", "schedule_memory_test", "schedule_chkdsk", "defender_offline_scan", "restart_pc"];
   P.sort((a, b) => order.indexOf(a.action) - order.indexOf(b.action));
   const crit = F.filter(f => f.severity === "critical").length, warn = F.filter(f => f.severity === "warn").length;
@@ -1377,6 +1406,8 @@ function resultLine(j) {
   if (j.action === "windows_update") bits.push(r.mode === "install" ? `${r.installed || 0} installed${r.failed ? ", " + r.failed + " failed" : ""}` : `${r.found || 0} update(s) available`);
   if (j.action === "app_updates") bits.push(r.mode === "install" ? `${r.installed || 0} program(s) updated` : `${r.available || 0} program update(s) available`);
   if (j.action === "program_uninstall" && r.removed) bits.push(`removed (${r.method})`);
+  if (j.action === "av_remove" && r.removed) bits.push("removed · " + (r.defenderActive ? "Defender protecting" : "restart to switch Defender on"));
+  if (j.action === "office_remove" && r.removed) bits.push("Office removed · restart to finish");
   if (r.removedEntries != null) bits.push(`${r.removedEntries} hosts entr${r.removedEntries === 1 ? "y" : "ies"} removed`);
   if (Array.isArray(r.removed) && j.action === "remove_browser_policies") bits.push(r.removed.length + " policy key(s) removed");
   if (r.changes && j.action === "reset_dns") bits.push(r.changes.length + " adapter(s) reset");

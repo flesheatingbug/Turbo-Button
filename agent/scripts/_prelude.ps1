@@ -69,3 +69,39 @@ function Backup-Dir {
   return $d
 }
 $UninstallKeys = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+
+# ---- Office and security-software detection (shared by scan, office_remove, av_remove) ----
+$OfficeNameRe = '^(Microsoft (Office|365)|Microsoft (Word|Excel|PowerPoint|Outlook|Access|Publisher|Visio|Project|OneNote) (19|20)\d\d|Office 16 Click-to-Run)'
+$AvVendorRe = '(McAfee|Norton|Symantec|Avast|AVG |AVG$|Avira|Kaspersky|ESET|Bitdefender|Trend Micro|Sophos|Malwarebytes|Panda (Dome|Security|Free)|TotalAV|Total AV|Webroot|F-Secure|G DATA|Comodo|360 Total Security|BullGuard|ZoneAlarm|Quick Heal|Total Defense|Scanguard|PC Matic|VIPRE|Emsisoft|Surfshark Antivirus|Intego|K7 ?(Total|Anti))'
+$AvSkipRe = '(Browser|VPN|Password|SafeZone|Secure Browser|Driver Updater|Cleanup|Tune ?Up|Utilities|Family|Parental|Toolbar|Search|Web Advisor|WebAdvisor|Safe ?Connect|Identity|Privacy|PC Optimizer|Speedup|Support Tool|Update Helper)'
+function Get-UninstallEntries {
+  @(Get-ItemProperty $UninstallKeys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -and -not $_.ParentKeyName })
+}
+function Get-OfficeInstalls {
+  @(Get-UninstallEntries | Where-Object { $_.DisplayName -match $OfficeNameRe -and $_.DisplayName -notmatch '(MUI|Proofing|Language Pack|Shared|Components|Click-to-Run (Extensibility|Licensing|Localization)|Interop|Runtime|Access database engine|Visual Studio)' -and $_.SystemComponent -ne 1 -and $_.UninstallString } |
+    Sort-Object DisplayName -Unique | ForEach-Object {
+      $u = "$($_.UninstallString)"
+      $kind = if ($u -match 'OfficeClickToRun\.exe') { 'click-to-run' } elseif ($u -match '(?i)setup\.exe.*?/uninstall\s+\S+') { 'msi-setup' } elseif ($u -match '(?i)msiexec' -and $_.PSChildName -match '^\{') { 'msi' } else { 'other' }
+      [pscustomobject]@{ name = $_.DisplayName; version = $_.DisplayVersion; kind = $kind; entry = $_ } })
+}
+function Get-SecuritySoftware {
+  @(Get-UninstallEntries | Where-Object { ($_.DisplayName -match $AvVendorRe -or $_.Publisher -match $AvVendorRe) -and $_.DisplayName -notmatch $AvSkipRe -and $_.DisplayName -notmatch 'Defender|Microsoft' -and $_.SystemComponent -ne 1 -and ($_.UninstallString -or $_.QuietUninstallString) } |
+    Sort-Object DisplayName -Unique | ForEach-Object {
+      $how = if ($_.QuietUninstallString) { 'quiet' } elseif ("$($_.UninstallString)" -match 'msiexec' -and $_.PSChildName -match '^\{') { 'msi' } else { 'interactive' }
+      [pscustomobject]@{ name = $_.DisplayName; publisher = $_.Publisher; version = $_.DisplayVersion; uninstall = $how; entry = $_ } })
+}
+# The vendor's own clean-up tool, for when the normal uninstaller fails or is blocked.
+function Get-AvRemovalTool($n) {
+  switch -Regex ($n) {
+    'McAfee' { 'McAfee Consumer Product Removal tool (MCPR)' }
+    'Norton|Symantec' { 'Norton Remove and Reinstall tool' }
+    'Avast' { 'Avast Clear (avastclear.exe)' }
+    'AVG' { 'AVG Clear (avgclear.exe)' }
+    'Kaspersky' { 'Kaspersky kavremover' }
+    'ESET' { 'ESET Uninstaller' }
+    'Bitdefender' { 'Bitdefender Uninstall Tool' }
+    'Malwarebytes' { 'Malwarebytes Support Tool (Clean option)' }
+    'Trend Micro' { 'Trend Micro Uninstall Tool' }
+    default { "the vendor's removal tool (search the vendor's support site)" }
+  }
+}

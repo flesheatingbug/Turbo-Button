@@ -260,5 +260,31 @@
    "0.0.0.0 www.eset.com"
   ],
   "hostsEntryCount": 2
- }
+ },
+ "securitySoftware": [
+  {
+   "name": "McAfee LiveSafe",
+   "publisher": "McAfee, LLC",
+   "version": "16.0 R140",
+   "uninstall": "interactive"
+  },
+  {
+   "name": "Avast Free Antivirus",
+   "publisher": "Avast Software",
+   "version": "25.9",
+   "uninstall": "interactive"
+  }
+ ],
+ "office": [
+  {
+   "name": "Microsoft 365 - en-us",
+   "version": "16.0.19328.20000",
+   "kind": "click-to-run"
+  },
+  {
+   "name": "Microsoft Office Home and Student 2016",
+   "version": "16.0.4266.1001",
+   "kind": "msi-setup"
+  }
+ ]
 }

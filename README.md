@@ -182,6 +182,7 @@ In the app, tap **Scan QR code** and point it at the PC's screen. The scan start
 | Space | Temp files, update cache, delivery optimisation, crash dumps, browser caches, thumbnails, Recycle Bin, DISM component clean-up, hibernation |
 | Speed | Startup apps, scheduled tasks, services, power plan, Fast Startup, TRIM/defrag |
 | Junk | Remove preinstalled Store apps, uninstall trialware and "optimizer" programs |
+| Antivirus & Office | Remove any third-party antivirus (McAfee, Norton, Avast, AVG, Kaspersky, ESET, Bitdefender…): silently where possible, otherwise its own uninstaller opens on the PC. Defender takes over after a restart. Remove any Microsoft Office (2007–2016, 2019/2021/2024, Microsoft 365) silently; Outlook data is kept |
 | Privacy | Advertising ID, Start menu ads and suggestions, tailored experiences, Bing in Start, lock-screen tips, minimum telemetry |
 | Repair | SFC, DISM RestoreHealth, CHKDSK (scheduled), memory test, reset Windows Update, network stack, Store, search index |
 | Adware | Reset proxy, DNS and hosts; remove forced browser policies |
@@ -237,7 +238,7 @@ The report also has a **Basic report (no AI)** button. It builds the report from
 
 - ✅ **Nothing happens without you.** Every change is approved on the phone, and anything risky is marked "ask the customer".
 - 🛟 **Undo point first.** A restore point (Windows) or snapshot (Linux, if one is set up) is made before the first change.
-- 🛡 **Security is never weakened.** It won't touch Defender, the firewall, Windows Update, UAC, core services or (on Linux) systemd, the display manager, NetworkManager, polkit or AppArmor/SELinux. Drivers, runtimes, Office and security software can't be uninstalled.
+- 🛡 **Security is never weakened.** It won't touch Defender, the firewall, Windows Update, UAC, core services or (on Linux) systemd, the display manager, NetworkManager, polkit or AppArmor/SELinux. Drivers and runtimes can't be uninstalled, Microsoft Defender can never be removed, and antivirus or Office removal always asks first.
 - 🏢 **Business PCs are left alone.** Proxy, DNS and browser-policy resets are never proposed on domain-joined PCs.
 - 💾 **Backups.** The hosts file and browser policies are backed up before they're reset.
 - 🔐 **Locked to your phone.** The agent only accepts requests carrying the session key from the QR code. The customer screen only answers the PC itself.

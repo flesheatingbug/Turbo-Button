@@ -136,6 +136,13 @@ var Catalog = []Action{
 		Desc:   "Silently uninstalls a desktop program by its exact name from the scan (quiet uninstaller, MSI, or winget). Programs without a silent uninstaller must be removed by hand. Drivers, runtimes, Office and security software are refused.",
 		Params: []Param{{Name: "name", Type: "string", Pattern: reNoCtrl, Desc: "Exact program name from scan.programs"}}},
 
+	{ID: "office_remove", Title: "Remove Microsoft Office", Category: "junk", Risk: "high", Long: true, Modifies: true, TimeoutMin: 45, Reboot: true,
+		Desc:   "Silently removes one Microsoft Office install by its exact name from scan.office: any version (2007-2016 MSI, 2013+/2019/2021/2024, Microsoft 365 Click-to-Run). Closes Office apps first. Outlook data files are kept. The customer needs their Microsoft account or product key to reinstall, so always ask the customer. Use for broken installs before a reinstall, expired trials, or duplicate Office versions.",
+		Params: []Param{{Name: "name", Type: "string", Pattern: reNoCtrl, Desc: "Exact name from scan.office"}}},
+	{ID: "av_remove", Title: "Remove an antivirus", Category: "junk", Risk: "high", Long: true, Modifies: true, TimeoutMin: 40, Reboot: true,
+		Desc:   "Removes one third-party antivirus/security suite by its exact name from scan.securitySoftware (McAfee, Norton, Avast, AVG, Kaspersky, ESET, Bitdefender…). Uses the silent uninstaller when there is one; otherwise the vendor's uninstaller opens on the PC and the technician clicks through it there. Microsoft Defender takes over after a restart. Use for expired trials, preinstalled trialware, or two antiviruses fighting. Always ask the customer. Never removes Microsoft Defender.",
+		Params: []Param{{Name: "name", Type: "string", Pattern: reNoCtrl, Desc: "Exact name from scan.securitySoftware"}}},
+
 	{ID: "reset_proxy", Title: "Remove proxy settings", Category: "junk", Risk: "medium", Modifies: true,
 		Desc: "Turns off the user's proxy / auto-config script and resets the system (WinHTTP) proxy. Adware often sets these. Business PCs may need their proxy."},
 
@@ -300,6 +307,14 @@ func ValidateParams(a *Action, in map[string]any) (map[string]string, error) {
 	case "program_uninstall":
 		if protectedProgram.MatchString(out["name"]) {
 			return nil, fmt.Errorf("program %q is protected (driver, runtime, Office or security software)", out["name"])
+		}
+	case "av_remove":
+		if regexp.MustCompile(`(?i)defender|microsoft|windows security|turbo button`).MatchString(out["name"]) {
+			return nil, fmt.Errorf("%q can't be removed: Microsoft Defender is part of Windows", out["name"])
+		}
+	case "office_remove":
+		if !regexp.MustCompile(`(?i)^(microsoft (office|365|word|excel|powerpoint|outlook|access|publisher|visio|project|onenote)|office 16)`).MatchString(out["name"]) {
+			return nil, fmt.Errorf("%q isn't a Microsoft Office install", out["name"])
 		}
 	case "app_remove":
 		for _, pre := range protectedAppPrefixes {

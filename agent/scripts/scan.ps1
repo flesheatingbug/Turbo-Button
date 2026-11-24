@@ -145,6 +145,14 @@ Section 'programs' {
     })
 }
 
+Section 'office' {
+  @(Get-OfficeInstalls | ForEach-Object { [ordered]@{ name = $_.name; version = $_.version; kind = $_.kind } })
+}
+
+Section 'securitySoftware' {
+  @(Get-SecuritySoftware | ForEach-Object { [ordered]@{ name = $_.name; publisher = $_.publisher; version = $_.version; uninstall = $_.uninstall } })
+}
+
 Section 'power' {
   $pw = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -ErrorAction SilentlyContinue
   [ordered]@{ activePlan = ((powercfg /getactivescheme) -join ' ').Trim(); plans = ((powercfg /list) | Where-Object { $_ -match 'GUID' }) -join ' ; '
