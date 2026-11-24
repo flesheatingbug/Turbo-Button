@@ -268,10 +268,19 @@ public class MainActivity extends Activity {
                             .putExtra(Intent.EXTRA_TEXT, message)
                             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(Intent.createChooser(send, "Send to your AI app"));
-                } catch (Exception e) {
-                    toast("Could not share: " + e.getMessage());
+                    shareResult("ok", "");
+                } catch (Throwable e) {
+                    toast("Could not share: " + e);
+                    shareResult("error", String.valueOf(e));
                 }
             });
+        }
+
+        private void shareResult(String state, String detail) {
+            try {
+                String js = "window.__shareResult && window.__shareResult(" + JSONObject.quote(state) + "," + JSONObject.quote(detail) + ")";
+                web.evaluateJavascript(js, null);
+            } catch (Throwable ignored) { }
         }
 
         /** {"build":n,"auto":bool} for the settings page. */

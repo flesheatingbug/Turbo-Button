@@ -330,7 +330,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.9.9";
+const PAGE_VERSION = "0.9.10";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -924,14 +924,26 @@ function aiAppSend(kind) {
       "Do NOT create a file, document, artifact or canvas, and don't use tools or code execution. Keep every text field short (under 15 words) and give at most 15 proposals.\n\n" +
       system + "\n\n=== DATA ===\n" + data + "\n=== END ===\n";
     flash("PROMPT READY ✓", "Pick your AI app and tap send");
-    setTimeout(() => window.TurboNative.shareToAI(`TurboButton-${plan ? "plan" : "report"}-request.txt`, content, message), 700);
-    setTimeout(() => toast("If the AI app's message box is empty, paste — the instruction is on your clipboard.", 7000), 1500);
+    let answered = false;
+    window.__shareResult = (state, detail) => {
+      answered = true;
+      if (state === "ok") toast("If the AI app's message box is empty, paste — the instruction is on your clipboard.", 7000);
+      else { copyText(chatPrompt(system, data, shape)); toast("Couldn't open the share sheet (" + detail + "). The whole prompt is copied instead — paste it into your AI app.", 12000); }
+    };
+    setTimeout(() => {
+      try { window.TurboNative.shareToAI(`TurboButton-${plan ? "plan" : "report"}-request.txt`, content, message); }
+      catch (e) { window.__shareResult("error", e.message); }
+    }, 700);
+    setTimeout(() => { if (!answered) { copyText(chatPrompt(system, data, shape)); toast("The share sheet didn't open. The whole prompt is copied instead — paste it into your AI app.", 12000); } }, 4000);
   } else copyText(chatPrompt(system, data, shape));
 }
 $("planCopy").onclick = () => {
   if (!S.scan) { toast("Run a scan first"); show("scan"); return; }
-  aiAppSend("plan");
+  try { aiAppSend("plan"); } catch (e) { toast("Send to AI failed: " + e.message, 12000); }
 };
+// Show unexpected errors instead of failing silently.
+window.addEventListener("error", (e) => { try { toast("Error: " + (e.message || e.error), 10000); } catch {} });
+window.addEventListener("unhandledrejection", (e) => { try { toast("Error: " + (e.reason?.message || e.reason), 10000); } catch {} });
 $("planUsePaste").onclick = () => {
   try { const pl = parseJSON($("planPaste").value); usePlan(pl, "AI app (pasted)"); $("planPaste").value = ""; flash("PLAN LOADED ✓", `${(pl.proposals || []).length} suggestion(s)`); toast(pl._repaired ? "Plan loaded — the reply was cut off, so some suggestions may be missing" : "Plan loaded", 5000); }
   catch (e) { toast("Couldn't read that reply: " + e.message, 10000); }
@@ -1556,7 +1568,7 @@ $("reportBtn").onclick = async () => {
   catch (e) { $("reportStatus").textContent = "AI unavailable (" + e.message + ") — made a basic report instead."; useReport(basicReport()); }
 };
 $("reportBasicBtn").onclick = () => { $("reportStatus").textContent = ""; useReport(basicReport()); };
-$("reportCopy").onclick = () => aiAppSend("report");
+$("reportCopy").onclick = () => { try { aiAppSend("report"); } catch (e) { toast("Send to AI failed: " + e.message, 12000); } };
 $("reportUsePaste").onclick = () => {
   try { useReport(parseJSON($("reportPaste").value)); $("reportPaste").value = ""; $("reportStatus").textContent = ""; }
   catch (e) { toast("Couldn't read that reply: " + e.message, 10000); }

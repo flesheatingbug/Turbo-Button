@@ -16,7 +16,7 @@ android {
         targetSdk = 35
         // CI build number = version code, so the in-app updater can tell which build is newer.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
-        versionName = "0.9.9." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+        versionName = "0.9.10." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
     }
 
     signingConfigs {
