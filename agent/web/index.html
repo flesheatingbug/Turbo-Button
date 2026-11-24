@@ -335,7 +335,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.9.11";
+const PAGE_VERSION = "0.9.12";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -1392,7 +1392,7 @@ async function poll(sess) {
     const sig = jobs.map(j => j.id + j.status).join();
     if (sig !== sess._sig) { sess._sig = sig; saveRecord(sess); }
     if (scanDone !== prevScanDone) {
-      const sc = await api("/api/scan", {}, sess); sess.scan = sc.latest; sess.firstScan = sess.keepFirst || sc.first;
+      const sc = await api("/api/scan", {}, sess); sess.scan = fixScan(sc.latest); sess.firstScan = fixScan(sess.keepFirst || sc.first);
       if (sess === S) { renderScan(); renderBA(); $("scanStatus").textContent = "Last scan: " + (S.scan?.scannedAt || ""); }
       if (sess.scan && scanDone === 1) toast(`${sess.name}: scan finished`);
     }
@@ -1459,6 +1459,25 @@ function updateKeepAlive() {
   try { window.TurboNative.keepAlive(!!text && notifyOn(), text); } catch {}
 }
 setInterval(updateKeepAlive, 3000);
+
+// Windows PowerShell sends a one-item list as a single object (and an empty one as nothing).
+// Turn every field that should be a list back into one, so one GPU / one antivirus doesn't break the page.
+const LIST_FIELDS = ["gpu", "volumes", "physicalDisks", "startup", "scheduledTasks", "services", "apps", "programs", "office", "securitySoftware", "problemDevices", "topProcesses", "errors",
+  "security.antivirusProducts", "security.recentThreats", "security.listeningOnNetwork", "updates.recentHotfixes", "events.topSources", "events.appCrashes30d", "events.unexpectedShutdownTimes",
+  "bootPerformance.recentBoots", "bootPerformance.slowdowns", "crashes.bugchecks90d", "crashes.minidumps", "performance.topCpu", "performance.thermalZonesC",
+  "browsersAndNetwork.extensions", "browsersAndNetwork.browserSettings", "browsersAndNetwork.browserPolicies", "browsersAndNetwork.dns", "browsersAndNetwork.hostsEntries"];
+const asList = (v) => Array.isArray(v) ? v : v == null || v === "" ? [] : [v];
+function fixScan(sc) {
+  if (!sc || typeof sc !== "object") return sc;
+  for (const f of LIST_FIELDS) {
+    const [a, b] = f.split(".");
+    if (!b) { if (a in sc) sc[a] = asList(sc[a]); }
+    else if (sc[a] && typeof sc[a] === "object" && b in sc[a]) sc[a][b] = asList(sc[a][b]);
+  }
+  for (const d of sc.browsersAndNetwork?.dns || []) if (d && "servers" in d) d.servers = asList(d.servers);
+  for (const p of sc.browsersAndNetwork?.browserPolicies || []) if (p && "values" in p) p.values = asList(p.values);
+  return sc;
+}
 
 function since(t0, t1) { if (!t0) return ""; const s = Math.round(((t1 ? new Date(t1) : new Date()) - new Date(t0)) / 1000); return s < 90 ? s + "s" : Math.round(s / 60) + "m"; }
 function resultLine(j) {
@@ -1739,7 +1758,7 @@ async function offerContinue(sess) {
   const facts = [`Last worked on ${when}`, `${done} fix${done === 1 ? "" : "es"} done` + (r.plan ? " · plan saved" : "") + (r.form?.rCustomer ? " · " + r.form.rCustomer : "")];
   if (await ask({ title: `Welcome back to ${r.name}`, facts, note: "Continue to keep the first visit's before scan, plan, work log and report details, so the report covers both visits.", ok: "Continue job", cancel: "Start fresh" })) {
     Object.assign(sess, { keepFirst: r.firstScan || null, prevJobs: (r.jobs || []).map(j => ({ ...j, earlier: true })), plan: r.plan || null, form: r.form || {}, savedReport: r.savedReport || null, report: null });
-    if (r.firstScan) sess.firstScan = r.firstScan;
+    if (r.firstScan) sess.firstScan = fixScan(r.firstScan);
     toast(`Continuing the job on ${r.name}. Rescan to compare with the first visit.`, 6000);
   } else dropRecord(mid);
   saveState(sess); saveRecord(sess);
@@ -1881,7 +1900,7 @@ async function startSession(sess) {
     const fresh = !sess.info;
     sess.info = info; sess.name = info.computer; sess.ended = false; sess.status = "ok";
     if (fresh) await offerContinue(sess);
-    const sc = await api("/api/scan", {}, sess); sess.scan = sc.latest; sess.firstScan = sess.keepFirst || sc.first;
+    const sc = await api("/api/scan", {}, sess); sess.scan = fixScan(sc.latest); sess.firstScan = fixScan(sess.keepFirst || sc.first);
     sess.jobs = (await api("/api/jobs", {}, sess)) || [];
     if (!sess.scan && !sess.jobs.some(j => j.action === "scan")) {   // first scan starts automatically (read-only)
       await api("/api/scan", { method: "POST" }, sess);

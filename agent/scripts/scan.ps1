@@ -1,7 +1,10 @@
 $r = [ordered]@{ scannedAt = (Get-Date).ToString('s'); errors = @() }
+$ListSections = 'gpu','volumes','physicalDisks','startup','scheduledTasks','services','apps','programs','office','securitySoftware','problemDevices','topProcesses'
 function Section($name, [scriptblock]$sb) {
   Say "Scanning: $name"
-  try { $r[$name] = & $sb } catch { $r.errors += "$name : $($_.Exception.Message)" }
+  # PowerShell turns a one-item list into a single object (and an empty one into nothing), so list
+  # sections are always wrapped back into arrays: the phone app expects lists there.
+  try { $v = & $sb; $r[$name] = if ($name -in $ListSections) { ,@($v | Where-Object { $null -ne $_ }) } else { $v } } catch { $r.errors += "$name : $($_.Exception.Message)" }
 }
 function Short($s, $n) { $t = ("$s" -replace '\s+', ' ').Trim(); if ($t.Length -gt $n) { $t.Substring(0, $n) + '...' } else { $t } }
 function GB($b) { [math]::Round(([double]$b) / 1GB, 2) }
