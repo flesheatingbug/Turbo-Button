@@ -113,9 +113,9 @@ public class MainActivity extends Activity {
         Updater.schedule(this);
         if (Updater.ACTION_UPDATE.equals(getIntent().getAction())) Updater.checkAndPrompt(this, true);
         else Updater.checkOnLaunch(this);
-        if (android.os.Build.VERSION.SDK_INT >= 33 && Updater.auto(this) && !Updater.prefs(this).getBoolean("askedNotify", false)
+        if (android.os.Build.VERSION.SDK_INT >= 33 && !Updater.prefs(this).getBoolean("askedNotify2", false)
                 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            Updater.prefs(this).edit().putBoolean("askedNotify", true).apply();
+            Updater.prefs(this).edit().putBoolean("askedNotify2", true).apply();
             requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
         }
     }
@@ -140,6 +140,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        WorkService.stop(this);
         pool.shutdownNow();
         if (web != null) {
             web.removeJavascriptInterface("TurboNative");
@@ -281,6 +282,35 @@ public class MainActivity extends Activity {
                 String js = "window.__shareResult && window.__shareResult(" + JSONObject.quote(state) + "," + JSONObject.quote(detail) + ")";
                 web.evaluateJavascript(js, null);
             } catch (Throwable ignored) { }
+        }
+
+        private int notifyId = 100;
+
+        /** A "scan finished" / "fixes finished" notification. */
+        @JavascriptInterface
+        public void notify(String title, String text) {
+            main.post(() -> {
+                try {
+                    if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+                    WorkService.channels(MainActivity.this);
+                    android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                    nm.notify(notifyId++, new android.app.Notification.Builder(MainActivity.this, WorkService.CH_JOBS)
+                            .setSmallIcon(R.drawable.ic_stat_update)
+                            .setColor(0xFF33FF66)
+                            .setContentTitle(title)
+                            .setContentText(text)
+                            .setStyle(new android.app.Notification.BigTextStyle().bigText(text))
+                            .setContentIntent(WorkService.open(MainActivity.this))
+                            .setAutoCancel(true)
+                            .build());
+                } catch (Throwable ignored) { }
+            });
+        }
+
+        /** Keep the app alive in the background while jobs run (on=false stops it). */
+        @JavascriptInterface
+        public void keepAlive(boolean on, String text) {
+            main.post(() -> { if (on) WorkService.start(MainActivity.this, text); else WorkService.stop(MainActivity.this); });
         }
 
         /** {"build":n,"auto":bool} for the settings page. */

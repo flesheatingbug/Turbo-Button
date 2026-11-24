@@ -270,6 +270,13 @@ A full-window view on the PC in the same retro style. It shows the QR code until
 
 </details>
 
+<details>
+<summary><b>🔔 Notifications</b></summary>
+
+With the app in the background, the phone tells you when a scan finishes, when all fixes on a PC are done (with how many failed and how much space was freed), when something needs you at the PC (like an antivirus uninstaller waiting for clicks), or when a PC drops off mid-job. While jobs run, a quiet "Working on…" notification keeps the app awake so alerts still arrive with the screen off. Turn them off under **⚙ → Notifications**.
+
+</details>
+
 <details id="app-updates">
 <summary><b>⬆ App updates</b></summary>
 

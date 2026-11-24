@@ -226,6 +226,11 @@
       <div class="mut" id="sessionInfo"></div>
       <div class="mut" id="versionInfo" style="margin-top:4px"></div>
     </div>
+    <div class="card" id="notifyCard" style="display:none">
+      <h2>Notifications</h2>
+      <label class="row"><input type="checkbox" id="notifyOn" style="width:auto"> Tell me when scans and fixes finish</label>
+      <div class="mut" style="margin-top:6px">Only while Turbo Button isn't on screen. While jobs run, a quiet "working" notification keeps the app awake so the alert still arrives with the screen off.</div>
+    </div>
     <div class="card" id="updCard" style="display:none">
       <h2>App updates</h2>
       <label class="row"><input type="checkbox" id="updAuto" style="width:auto"> Check for new builds automatically</label>
@@ -330,7 +335,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.9.10";
+const PAGE_VERSION = "0.9.11";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -1382,7 +1387,8 @@ async function poll(sess) {
     if (sess.status === "lost") {
       try { const inf = await api("/api/info", {}, sess); if (inf.resumed && !sess.info?.resumed) toast(`${sess.name} is back after the restart — job resumed. Rescan to check the results.`, 7000); sess.info = inf; } catch {}
     }
-    sess.jobs = jobs; sess.status = "ok";
+    jobEvents(sess, sess.jobs, jobs);
+    sess.jobs = jobs; sess.status = "ok"; sess._lostNotified = false;
     const sig = jobs.map(j => j.id + j.status).join();
     if (sig !== sess._sig) { sess._sig = sig; saveRecord(sess); }
     if (scanDone !== prevScanDone) {
@@ -1400,11 +1406,60 @@ async function poll(sess) {
     const busy = jobs.some(j => j.status === "running" || j.status === "queued");
     sess.timer = setTimeout(() => poll(sess), busy ? 1500 : 6000);
   } catch (e) {
+    if (sess.status !== "lost" && !sess._lostNotified && (sess.jobs || []).some(j => j.status === "running" || j.status === "queued") && !(sess.jobs || []).some(j => j.action === "restart_pc" && j.status !== "failed")) {
+      sess._lostNotified = true; phoneNotify(`Lost contact with ${sess.name}`, "Jobs were still running. Check the PC is on and on the same Wi-Fi.");
+    }
     sess.status = "lost"; renderPCs();
     if (sess === S) { $("pcName").textContent = (sess.name || "PC") + " — reconnecting…"; updateFlow(); }
     sess.timer = setTimeout(() => poll(sess), 5000);
   }
 }
+// ---------- phone notifications (only while the app is in the background) ----------
+const notifyOn = () => { try { return localStorage.getItem("turbo.notify") !== "off"; } catch { return true; } };
+function phoneNotify(title, text) {
+  if (!NATIVE || !window.TurboNative.notify || !notifyOn()) return;
+  if (document.visibilityState === "visible") return; // the app is open: toasts are enough
+  try { window.TurboNative.notify(title, text); } catch {}
+}
+const busyJob = (j) => j.status === "running" || j.status === "queued";
+function jobEvents(sess, before, after) {
+  if (!before || !before.length) return; // first look after connecting: nothing "just finished"
+  const prev = Object.fromEntries(before.map(j => [j.id, j]));
+  const fresh = (j) => !prev[j.id] || busyJob(prev[j.id]); // not finished when we last looked
+  const finished = after.filter(j => fresh(j) && (j.status === "done" || j.status === "failed"));
+  const pc = sess.name || "the PC";
+  if (finished.some(j => j.action === "scan" && j.status === "done") && !after.some(j => j.action !== "scan" && busyJob(j)))
+    phoneNotify(`Scan finished on ${pc}`, "Open Turbo Button to make a plan.");
+  for (const j of after) {
+    const line = String(j.output || "").split("\n").reverse().find(l => /ACTION NEEDED/i.test(l));
+    if (j.status === "running" && line && !(sess._asked || (sess._asked = {}))[j.id]) { sess._asked[j.id] = 1; phoneNotify(`Action needed on ${pc}`, line.replace(/^.*ACTION NEEDED[^:]*:\s*/i, "")); }
+  }
+  const fx = finished.filter(j => j.action !== "scan");
+  if (fx.length && !after.some(busyJob)) {
+    // every fix finished since the last "done" notification (includes ones that started and ended between checks)
+    const rep = sess._reported || (sess._reported = new Set(before.filter(j => !busyJob(j)).map(j => j.id)));
+    const all = after.filter(j => j.action !== "scan" && (j.status === "done" || j.status === "failed") && !rep.has(j.id));
+    all.forEach(j => rep.add(j.id));
+    const ok = all.filter(j => j.status === "done").length, bad = all.filter(j => j.status === "failed").length;
+    const freed = all.reduce((t, j) => t + (j.status === "done" && j.result?.freedBytes > 0 ? j.result.freedBytes : 0), 0);
+    const reboot = all.some(j => j.result?.rebootRequired);
+    phoneNotify(bad ? `Finished on ${pc} — ${bad} failed` : `All done on ${pc}`,
+      `${ok} fix${ok === 1 ? "" : "es"} done${bad ? `, ${bad} failed` : ""}${freed ? ` · ${fmtBytes(freed)} freed` : ""}${reboot ? " · restart needed" : ""}. Rescan to check the results.`);
+  }
+  if (!sess._reported) sess._reported = new Set(before.filter(j => !busyJob(j)).map(j => j.id));
+}
+// Keep the app alive in the background while any PC has work running.
+let aliveState = null;
+function updateKeepAlive() {
+  if (!NATIVE || !window.TurboNative.keepAlive) return;
+  const busy = SESS.filter(x => !x.ended && (x.jobs || []).some(busyJob));
+  const text = busy.length ? `Working on ${busy.map(x => x.name).join(", ")}` : "";
+  if (text === aliveState) return;
+  aliveState = text;
+  try { window.TurboNative.keepAlive(!!text && notifyOn(), text); } catch {}
+}
+setInterval(updateKeepAlive, 3000);
+
 function since(t0, t1) { if (!t0) return ""; const s = Math.round(((t1 ? new Date(t1) : new Date()) - new Date(t0)) / 1000); return s < 90 ? s + "s" : Math.round(s / 60) + "m"; }
 function resultLine(j) {
   const r = j.result || {};
@@ -1846,6 +1901,10 @@ async function startSession(sess) {
 
 (async function init() {
   $("versionInfo").textContent = (NATIVE ? "Turbo Button app " : "Turbo Button control page ") + PAGE_VERSION;
+  if (NATIVE && TurboNative.notify) {
+    $("notifyCard").style.display = ""; $("notifyOn").checked = notifyOn();
+    $("notifyOn").onchange = () => { try { localStorage.setItem("turbo.notify", $("notifyOn").checked ? "on" : "off"); } catch {} aliveState = null; updateKeepAlive(); };
+  }
   if (NATIVE && TurboNative.updateInfo) {
     try {
       const u = JSON.parse(TurboNative.updateInfo() || "{}");
