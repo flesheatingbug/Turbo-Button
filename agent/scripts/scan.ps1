@@ -1,10 +1,17 @@
 $r = [ordered]@{ scannedAt = (Get-Date).ToString('s'); errors = @() }
 $ListSections = 'gpu','volumes','physicalDisks','startup','scheduledTasks','services','apps','programs','office','securitySoftware','problemDevices','topProcesses'
+# PCM_RESUME_AFTER: the agent re-runs the scan from after a section that hung (it skips that one).
+$script:skipUntil = $env:PCM_RESUME_AFTER
+# CIM calls that never answer (broken WMI/performance counters) must not hang the scan.
+$PSDefaultParameterValues['Get-CimInstance:OperationTimeoutSec'] = 30
 function Section($name, [scriptblock]$sb) {
+  if ($script:skipUntil) { if ($name -eq $script:skipUntil) { $script:skipUntil = $null }; return }
   Say "Scanning: $name"
   # PowerShell turns a one-item list into a single object (and an empty one into nothing), so list
   # sections are always wrapped back into arrays: the phone app expects lists there.
-  try { $v = & $sb; $r[$name] = if ($name -in $ListSections) { ,@($v | Where-Object { $null -ne $_ }) } else { $v } } catch { $r.errors += "$name : $($_.Exception.Message)" }
+  try { $v = & $sb; $r[$name] = if ($name -in $ListSections) { ,@($v | Where-Object { $null -ne $_ }) } else { $v } } catch { $r.errors += "$name : $($_.Exception.Message)"; Write-Output ("##SECTION##" + (@{ n = '_error'; v = "$name : $($_.Exception.Message)" } | ConvertTo-Json -Compress)) }
+  # Each finished section is also sent on its own, so a later hang doesn't lose it.
+  if ($r.Contains($name)) { try { Write-Output ("##SECTION##" + (@{ n = $name; v = $r[$name] } | ConvertTo-Json -Compress -Depth 8)) } catch {} }
 }
 function Short($s, $n) { $t = ("$s" -replace '\s+', ' ').Trim(); if ($t.Length -gt $n) { $t.Substring(0, $n) + '...' } else { $t } }
 function GB($b) { [math]::Round(([double]$b) / 1GB, 2) }
@@ -272,17 +279,19 @@ Section 'crashes' {
 }
 
 Section 'performance' {
+  # Process times and Win32_OperatingSystem only: the performance-counter classes can hang for ever
+  # on PCs whose counters are damaged.
   $cores = [Environment]::ProcessorCount
   $t1 = @{}; foreach ($p in Get-Process) { try { $t1[$p.Id] = $p.TotalProcessorTime.TotalMilliseconds } catch {} }
-  $sw = [Diagnostics.Stopwatch]::StartNew(); $samples = @()
-  for ($i = 0; $i -lt 3; $i++) { $samples += [double](Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'").PercentProcessorTime; Start-Sleep -Milliseconds 900 }
-  $el = $sw.Elapsed.TotalMilliseconds
-  $top = @(Get-Process | ForEach-Object { $a = $t1[$_.Id]; if ($null -ne $a) { try { [pscustomobject]@{ name = $_.ProcessName; pct = [math]::Round(100 * ($_.TotalProcessorTime.TotalMilliseconds - $a) / ($el * $cores), 1) } } catch {} } } |
-    Where-Object { $_.pct -ge 1 } | Sort-Object pct -Descending | Select-Object -First 6 | ForEach-Object { "$($_.name) $($_.pct)%" })
-  $m = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory
-  $temps = @(Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue | ForEach-Object { [math]::Round($_.CurrentTemperature / 10 - 273.15) } | Where-Object { $_ -gt 0 -and $_ -lt 120 })
-  [ordered]@{ cpuNowPct = [math]::Round(($samples | Measure-Object -Average).Average); topCpu = $top
-    availableMB = $m.AvailableMBytes; committedPct = $m.PercentCommittedBytesInUse; pagesPerSec = $m.PagesPerSec; thermalZonesC = $temps }
+  $sw = [Diagnostics.Stopwatch]::StartNew(); Start-Sleep -Milliseconds 2500; $el = $sw.Elapsed.TotalMilliseconds
+  $all = @(Get-Process | ForEach-Object { $a = $t1[$_.Id]; if ($null -ne $a -and $_.Id -ne 0) { try { [pscustomobject]@{ name = $_.ProcessName; pct = 100 * ($_.TotalProcessorTime.TotalMilliseconds - $a) / ($el * $cores) } } catch {} } })
+  $busy = ($all | Measure-Object pct -Sum).Sum
+  $top = @($all | Where-Object { $_.pct -ge 1 } | Sort-Object pct -Descending | Select-Object -First 6 | ForEach-Object { "$($_.name) $([math]::Round($_.pct, 1))%" })
+  $os = Get-CimInstance Win32_OperatingSystem -OperationTimeoutSec 15
+  $commitPct = if ($os.TotalVirtualMemorySize) { [math]::Round(100 * ($os.TotalVirtualMemorySize - $os.FreeVirtualMemory) / $os.TotalVirtualMemorySize) } else { $null }
+  $temps = @(Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -OperationTimeoutSec 8 -ErrorAction SilentlyContinue | ForEach-Object { [math]::Round($_.CurrentTemperature / 10 - 273.15) } | Where-Object { $_ -gt 0 -and $_ -lt 120 })
+  [ordered]@{ cpuNowPct = [math]::Min(100, [math]::Round($busy)); topCpu = $top
+    availableMB = [math]::Round($os.FreePhysicalMemory / 1KB); committedPct = $commitPct; thermalZonesC = $temps }
 }
 
 Section 'memoryTest' {

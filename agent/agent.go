@@ -33,7 +33,7 @@ var iconPNG []byte
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.10.5"
+const Version = "0.10.6"
 
 type Job struct {
 	ID        int             `json:"id"`
@@ -336,7 +336,104 @@ func (a *Agent) runScript(parent context.Context, name string, env map[string]st
 
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, powershellPath(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path)
+	if name != "scan" {
+		r := a.runPS(ctx, path, env, 0, onLine)
+		return r.finish(ctx, timeout)
+	}
+	// The scan: if one section hangs (broken WMI, a dead network drive…), skip just that section and
+	// carry on from the next one, keeping everything already collected.
+	sections := map[string]json.RawMessage{}
+	var notes []string
+	env2 := map[string]string{}
+	for k, v := range env {
+		env2[k] = v
+	}
+	for attempt := 0; attempt < 6; attempt++ {
+		r := a.runPS(ctx, path, env2, scanStall, onLine)
+		for k, v := range r.sections {
+			sections[k] = v
+		}
+		notes = append(notes, r.sectionErrs...)
+		if !r.stalled {
+			if r.result != nil && json.Valid(r.result) {
+				if len(notes) == 0 || attempt == 0 {
+					return r.result, nil
+				}
+				var full map[string]json.RawMessage
+				if json.Unmarshal(r.result, &full) == nil {
+					for k, v := range full {
+						sections[k] = v
+					}
+				}
+				break
+			}
+			if len(sections) == 0 {
+				return r.finish(ctx, timeout)
+			}
+			notes = append(notes, "scan ended early: "+r.errText())
+			break
+		}
+		msg := fmt.Sprintf("the %s check didn't answer for %s, so it was skipped", r.lastSection, strings.TrimSuffix(strings.TrimSuffix(scanStall.String(), "0s"), "m0")+map[bool]string{true: " min", false: ""}[scanStall >= time.Minute])
+		onLine("⚠ " + msg + " — carrying on with the rest")
+		notes = append(notes, msg)
+		if r.lastSection == "" {
+			break
+		}
+		env2["PCM_RESUME_AFTER"] = r.lastSection
+	}
+	errs, _ := json.Marshal(notes)
+	sections["errors"] = errs
+	if _, ok := sections["scannedAt"]; !ok {
+		sections["scannedAt"], _ = json.Marshal(time.Now().Format("2006-01-02T15:04:05"))
+	}
+	return json.Marshal(sections)
+}
+
+type psRun struct {
+	result      json.RawMessage
+	scriptErr   string
+	werr        error
+	stalled     bool
+	lastSection string
+	sections    map[string]json.RawMessage
+	sectionErrs []string
+}
+
+func (r psRun) errText() string {
+	if r.scriptErr != "" {
+		return r.scriptErr
+	}
+	if r.werr != nil {
+		return r.werr.Error()
+	}
+	return "no result"
+}
+
+func (r psRun) finish(ctx context.Context, timeout time.Duration) (json.RawMessage, error) {
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, fmt.Errorf("stopped after %v (time limit)", timeout)
+	}
+	if r.scriptErr != "" {
+		return nil, errors.New(r.scriptErr)
+	}
+	if r.werr != nil && r.result == nil {
+		return nil, fmt.Errorf("script failed: %v", r.werr)
+	}
+	if r.result == nil {
+		return nil, errors.New("script finished without a result")
+	}
+	if !json.Valid(r.result) {
+		return nil, errors.New("script returned invalid JSON")
+	}
+	return r.result, nil
+}
+
+// runPS runs one PowerShell script. stall > 0: stop it if it prints nothing for that long.
+func (a *Agent) runPS(ctx context.Context, path string, env map[string]string, stall time.Duration, onLine func(string)) psRun {
+	out := psRun{sections: map[string]json.RawMessage{}}
+	rctx, stop := context.WithCancel(ctx)
+	defer stop()
+	cmd := exec.CommandContext(rctx, powershellPath(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path)
 	cmd.Env = os.Environ()
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
@@ -348,40 +445,85 @@ func (a *Agent) runScript(parent context.Context, name string, env map[string]st
 	stdout, _ := cmd.StdoutPipe()
 	cmd.Stderr = cmd.Stdout
 	if err := cmd.Start(); err != nil {
-		return nil, err
+		out.werr = err
+		return out
 	}
-	var result json.RawMessage
-	var scriptErr string
+	// If it's stopped but something it started still holds the output open, stop reading anyway.
+	finished := make(chan struct{})
+	defer close(finished)
+	go func() {
+		select {
+		case <-rctx.Done():
+			select {
+			case <-time.After(12 * time.Second):
+				stdout.Close()
+			case <-finished:
+			}
+		case <-finished:
+		}
+	}()
+	var mu sync.Mutex
+	last := time.Now()
+	if stall > 0 {
+		go func() {
+			t := time.NewTicker(5 * time.Second)
+			defer t.Stop()
+			for {
+				select {
+				case <-rctx.Done():
+					return
+				case <-t.C:
+					mu.Lock()
+					idle := time.Since(last)
+					mu.Unlock()
+					if idle > stall {
+						mu.Lock()
+						out.stalled = true
+						mu.Unlock()
+						stop()
+						return
+					}
+				}
+			}
+		}()
+	}
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 1024*1024), 32*1024*1024)
 	for sc.Scan() {
 		line := strings.TrimRight(sc.Text(), "\r")
+		mu.Lock()
+		last = time.Now()
+		mu.Unlock()
 		switch {
 		case strings.HasPrefix(line, "##RESULT##"):
-			result = json.RawMessage(strings.TrimPrefix(line, "##RESULT##"))
+			out.result = json.RawMessage(strings.TrimPrefix(line, "##RESULT##"))
 		case strings.HasPrefix(line, "##ERROR##"):
-			scriptErr = strings.TrimPrefix(line, "##ERROR##")
+			out.scriptErr = strings.TrimPrefix(line, "##ERROR##")
+		case strings.HasPrefix(line, "##SECTION##"):
+			var sct struct {
+				N string          `json:"n"`
+				V json.RawMessage `json:"v"`
+			}
+			if json.Unmarshal([]byte(strings.TrimPrefix(line, "##SECTION##")), &sct) == nil && sct.N != "" {
+				if sct.N == "_error" {
+					var m string
+					json.Unmarshal(sct.V, &m)
+					out.sectionErrs = append(out.sectionErrs, m)
+				} else {
+					out.sections[sct.N] = sct.V
+				}
+			}
 		case strings.TrimSpace(line) != "":
+			if strings.HasPrefix(line, "Scanning: ") {
+				out.lastSection = strings.TrimSpace(strings.TrimPrefix(line, "Scanning: "))
+			}
 			onLine(line)
 		}
 	}
-	werr := cmd.Wait()
-	if ctx.Err() == context.DeadlineExceeded {
-		return nil, fmt.Errorf("stopped after %v (time limit)", timeout)
-	}
-	if scriptErr != "" {
-		return nil, errors.New(scriptErr)
-	}
-	if werr != nil && result == nil {
-		return nil, fmt.Errorf("script failed: %v", werr)
-	}
-	if result == nil {
-		return nil, errors.New("script finished without a result")
-	}
-	if !json.Valid(result) {
-		return nil, errors.New("script returned invalid JSON")
-	}
-	return result, nil
+	out.werr = cmd.Wait()
+	mu.Lock()
+	defer mu.Unlock()
+	return out
 }
 
 // ---------- HTTP ----------
@@ -623,3 +765,6 @@ func (a *Agent) remoteStatus() string {
 	}
 	return "remote access off: no turbobutton.conf in " + dir
 }
+
+// scanStall: a scan section that prints nothing for this long is skipped.
+var scanStall = 3 * time.Minute
