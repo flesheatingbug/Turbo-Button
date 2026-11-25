@@ -343,7 +343,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.10.3";
+const PAGE_VERSION = "0.10.4";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -439,7 +439,7 @@ async function relayHttp(method, path, body, sess) {
   const r = await http("POST", rc.url + "/phone/send/" + id, { Authorization: "Bearer " + rc.token, "Content-Type": "application/json" }, JSON.stringify({ blob: b64uEnc(packed) }));
   let j = {}; try { j = JSON.parse(r.text || "{}"); } catch {}
   if (r.status === 401) throw new NetError("this phone isn't paired with the relay any more (⚙ → Relay server)");
-  if (r.status >= 400) throw new NetError(j.error || ("relay HTTP " + r.status));
+  if (r.status >= 400) throw new NetError(j.error || ("relay HTTP " + r.status + whoAnswered(r)));
   const raw = b64uDec(j.blob || "");
   let o;
   try { o = JSON.parse(TD.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: raw.slice(0, 12), additionalData: TE.encode(id) }, key, raw.slice(12)))); }
@@ -460,6 +460,11 @@ function rememberStandby(sess) {
     try { const m = JSON.parse(localStorage.getItem("turbo.standbyPCs") || "{}"); m[id] = { token: sess.token, base: sess.base, name: sess.name, relay: sess.relay }; localStorage.setItem("turbo.standbyPCs", JSON.stringify(m)); } catch {}
   });
 }
+// For errors that didn't come from the relay itself: a hint of who answered (Cloudflare, nginx, a router…).
+function whoAnswered(r) {
+  const t = String(r.text || "").replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return t ? " — answered by: \"" + t.slice(0, 90) + "\"" : "";
+}
 async function pairRelay(txt) {
   let u, code;
   try { u = new URL(String(txt).trim()); code = new URLSearchParams(u.hash.slice(1)).get("pair"); } catch {}
@@ -467,7 +472,7 @@ async function pairRelay(txt) {
   try {
     const r = await http("POST", u.origin + "/phone/pair", { "Content-Type": "application/json" }, JSON.stringify({ code, name: "Turbo Button app" }));
     let j = {}; try { j = JSON.parse(r.text || "{}"); } catch {}
-    if (r.status >= 400 || !j.token) throw new Error(j.error || ("HTTP " + r.status));
+    if (r.status >= 400 || !j.token) throw new Error(j.error || ("HTTP " + r.status + " from " + u.host + whoAnswered(r)));
     localStorage.setItem("turbo.relay", JSON.stringify({ url: (j.relay || u.origin).replace(/\/+$/, ""), token: j.token, paired: Date.now() }));
     flash("RELAY PAIRED ✓", relayHost(j.relay || u.origin)); renderRelay(); refreshRelayPCs();
   } catch (e) { toast("Pairing failed: " + e.message, 8000); }

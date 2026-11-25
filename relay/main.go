@@ -40,7 +40,7 @@ var Version = "dev"
 const (
 	maxBlob       = 16 << 20 // one encrypted request/response
 	agentStale    = 70 * time.Second
-	replyTimeout  = 120 * time.Second
+	replyTimeout  = 90 * time.Second // under Cloudflare's 100 s limit
 	pollTimeout   = 25 * time.Second
 	sessionMaxAge = 12 * time.Hour
 	pairTTL       = 10 * time.Minute
@@ -289,6 +289,9 @@ func (r *Relay) routes() http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Write(indexHTML)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) { // anything else: say clearly it's the relay
+		fail(w, 404, "turbo-relay: nothing at "+req.Method+" "+req.URL.Path)
 	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, req *http.Request) { w.Write([]byte("ok")) })
 
