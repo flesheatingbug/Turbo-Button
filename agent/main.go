@@ -7,6 +7,7 @@ import (
 	neturl "net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -118,6 +119,8 @@ func main() {
 	go srv.Serve(ln)
 	if a.relayConf.on() {
 		a.relay = a.startRelay(a.relayConf, handler)
+	} else if c := confFile(); c != "" {
+		fmt.Println("  ! " + filepath.Base(c) + " was found but has no relay= and relaykey= lines, so the relay is off.")
 	}
 
 	ips := lanIPs()

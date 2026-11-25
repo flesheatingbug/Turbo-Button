@@ -51,10 +51,13 @@ func confFile() string {
 		}
 		dirs = append(dirs, filepath.Dir(exe))
 	}
+	// Notepad saves "turbobutton.conf" as "turbobutton.conf.txt" with the .txt hidden, so accept that too.
 	for _, d := range dirs {
-		p := filepath.Join(d, confName)
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
-			return p
+		for _, n := range []string{confName, confName + ".txt", "turbobutton.txt"} {
+			p := filepath.Join(d, n)
+			if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+				return p
+			}
 		}
 	}
 	return ""
@@ -79,7 +82,7 @@ func loadRelayConf() relayConf {
 		if f, err := os.Open(p); err == nil {
 			sc := bufio.NewScanner(f)
 			for sc.Scan() {
-				k, v, ok := strings.Cut(strings.TrimSpace(sc.Text()), "=")
+				k, v, ok := strings.Cut(strings.TrimSpace(strings.TrimPrefix(sc.Text(), "\ufeff")), "=")
 				if !ok || strings.HasPrefix(k, "#") {
 					continue
 				}

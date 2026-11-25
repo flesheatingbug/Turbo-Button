@@ -343,7 +343,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.10.0";
+const PAGE_VERSION = "0.10.1";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -510,7 +510,8 @@ async function api(path, opts = {}, sess = S) {
   try {
     r = sess.via === "relay" ? await relayHttp(opts.method || "GET", path, opts.body, sess)
       : await http(opts.method || "GET", sess.base + path, { "X-Token": sess.token, "Content-Type": "application/json" }, opts.body);
-  } catch (e) { if (e instanceof NetError) sess.via = null; throw e; } // try both routes again next time
+  } catch (e) { if (e instanceof NetError) { sess.via = null; sess.lastErr = e.message; } throw e; } // try both routes again next time
+  sess.lastErr = "";
   let j = {}; try { j = JSON.parse(r.text || "{}"); } catch {}
   if (r.status >= 400) throw new Error(j.error || ("HTTP " + r.status));
   return j;
@@ -1925,7 +1926,13 @@ $("pcName").onclick = () => show("setup");
 for (const id of ["rCustomer", "rRef", "rTech", "rNotes"]) $(id).addEventListener("input", () => { S.form[id] = $(id).value; saveState(); });
 
 function pcStatus(sess) {
-  if (sess.status === "lost") return ["bad", "Not reachable — retrying"];
+  if (sess.status === "lost") {
+    const rc = NATIVE && relayCfg();
+    if (rc && !sess.relay) return ["bad", "Not reachable on this network, and its QR code has no relay. Put turbobutton.conf next to TurboButton on that PC, restart it and scan the new QR code."];
+    if (rc && sess.relay && relayHost(sess.relay) !== relayHost(rc.url)) return ["bad", "Not reachable — it uses a different relay (" + relayHost(sess.relay) + ")"];
+    if (sess.relay && sess.lastErr) return ["bad", "Not reachable — " + sess.lastErr];
+    return ["bad", "Not reachable — retrying"];
+  }
   if (!sess.info) return ["mut", "Connecting…"];
   const scanBusy = sess.jobs.some(j => j.action === "scan" && (j.status === "running" || j.status === "queued"));
   const fix = sess.jobs.filter(j => j.action !== "scan" && (j.status === "running" || j.status === "queued"));
