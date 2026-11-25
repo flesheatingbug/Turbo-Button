@@ -99,6 +99,8 @@ function resultText(j) {
   if (r.verdict) bits.push(r.verdict);
   if (j.action === "windows_update" && r.mode === "install") bits.push(`${r.installed || 0} update(s) installed`);
   if (j.action === "windows_update" && r.mode === "check") bits.push(`${r.found || 0} update(s) available`);
+  if (j.action === "driver_updates" && r.mode === "install") bits.push(`${r.installed || 0} driver(s) updated`);
+  if (j.action === "feature_update" && r.result === "installed") bits.push(`Windows 11 ${r.target} ready after a restart`);
   if (j.action === "app_updates" && r.mode === "install") bits.push(`${r.installed || 0} program(s) updated`);
   if (r.removed === true) bits.push("removed");
   return bits.join(" · ");

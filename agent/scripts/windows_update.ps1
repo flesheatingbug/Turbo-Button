@@ -1,3 +1,4 @@
+if (Clear-TurboPin) { Say 'Removed a Windows version pin left by an earlier run that was cut short.' }
 $session = New-Object -ComObject Microsoft.Update.Session
 $session.ClientApplicationID = 'Turbo Button'
 $searcher = $session.CreateUpdateSearcher()

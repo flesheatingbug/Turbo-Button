@@ -63,6 +63,12 @@ func mockRun(ctx context.Context, name string, env map[string]string, onLine fun
 	if c, ok := canned[name]; ok && !(name == "app_updates" && env["PCM_mode"] == "install") {
 		return json.RawMessage(c), nil
 	}
+	if name == "driver_updates" && env["PCM_mode"] == "check" {
+		return json.RawMessage(`{"mode":"check","found":1,"drivers":[{"title":"Intel - Display - 31.0.101.5590","source":"Windows Update"}],"oemTool":"Dell Command Update","oemInstalled":false,"oldGraphics":[]}`), nil
+	}
+	if name == "feature_update" && env["PCM_mode"] == "check" {
+		return json.RawMessage(`{"mode":"check","current":"25H2","build":26200,"os":"Windows 11","target":"26H2","upToDate":false,"managed":false,"result":"upgrade available"}`), nil
+	}
 	if name == "windows_update" && env["PCM_mode"] == "check" {
 		return json.RawMessage(`{"mode":"check","found":2,"updates":[{"title":"2026-11 Cumulative Update (KB5099999)","driver":false},{"title":"Intel - Display - 31.0.101","driver":true}]}`), nil
 	}

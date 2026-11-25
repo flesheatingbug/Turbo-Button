@@ -343,7 +343,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.10.6";
+const PAGE_VERSION = "0.10.7";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -971,7 +971,7 @@ Rules:
 - Apps or startup items the customer may actively use (chat, music, cloud sync, VPN, games, printers, peripherals, OEM audio/touchpad tools) → askCustomer true. Clear junk (OEM trialware, updaters, toolbars, ads) → fine to propose.
 - Prefer fixing root causes found in events/health (failing disk, crashes, low space) over cosmetic tweaks. Flag hardware problems in findings/manual.
 - Put long actions (sfc, dism_restore, defender full scan) last, and dism_restore before sfc if corruption is suspected.
-- Updates: propose windows_update {mode:"install"} when updates are stale (drivers:true only if there are problem devices), and app_updates {mode:"install"} when winget is available. Use reset_windows_update first only if updates haven't installed for 60+ days.
+- Updates: propose windows_update {mode:"install"} when updates are stale, driver_updates {mode:"install", oemtool:true} when there are problem devices or old graphics drivers (instead of telling the technician to fetch drivers by hand), feature_update {mode:"install"} when Windows 11's displayVersion is older than the newest yearly release (${latestWin11()}), and app_updates {mode:"install"} when winget is available. Use reset_windows_update first only if updates haven't installed for 60+ days.
 - av_remove (exact name from scan.securitySoftware) for expired/preinstalled antivirus trials or when two antiviruses are installed: risk high, askCustomer true, keep one. Never leave the PC without protection; Defender takes over after the restart. Prefer av_remove over program_uninstall for security software.
 - office_remove (exact name from scan.office) only for duplicate Office versions, expired trials, or a broken Office before a reinstall: risk high, askCustomer true. Mention in "manual" that the customer needs their Microsoft account/product key to reinstall.
 - program_uninstall only for clear junk/trialware/adware (askCustomer true unless it is obviously malicious); use the exact name from scan.programs. If uninstall is "none"/"interactive" with no winget, put it in "manual" instead.
@@ -1248,7 +1248,16 @@ function quickPlanWin(s) {
   if (sysDrive) prop("optimize_drive", { drive: sysDrive.drive }, "Routine TRIM (SSD) or defrag (hard drive).");
   if ((ev.bluescreens30d || 0) > 0) find("warn", "Blue screens", `${ev.bluescreens30d} in the last 30 days — check drivers and RAM.`);
   if ((ev.unexpectedShutdowns30d || 0) > 0) find("warn", "Unexpected shutdowns", `${ev.unexpectedShutdowns30d} in 30 days — power cuts, overheating, or crashes.`);
-  if ((s.problemDevices || []).length) { find("warn", "Devices with driver problems", s.problemDevices.map(d => d.name).join(", ")); M.push({ title: "Fix device drivers", detail: "Install drivers from the manufacturer's support page for: " + s.problemDevices.map(d => d.name).join(", ") + "." }); }
+  if ((s.problemDevices || []).length) {
+    find("warn", "Devices with driver problems", s.problemDevices.map(d => d.name).join(", "));
+    prop("driver_updates", { mode: "install", oemtool: true }, "Install newer drivers from Windows Update and the PC maker's updater for: " + s.problemDevices.map(d => d.name).join(", ") + ".");
+    M.push({ title: "If a device still has a driver problem", detail: "After the automatic driver update, get the driver from the maker's support page for any device still listed in Device Manager." });
+  }
+  const oldGpu = (s.gpu || []).filter(g => g.driverDate && (Date.now() - new Date(g.driverDate)) / 864e5 > 548 && !/basic display|remote|virtual|hyper-v/i.test(g.name || ""));
+  if (oldGpu.length) {
+    find("info", "Old graphics driver", oldGpu.map(g => `${g.name} (${g.driverDate})`).join(", "));
+    prop("driver_updates", { mode: "install", oemtool: true }, "Graphics driver is over 18 months old: update drivers from Windows Update and the PC maker's updater.");
+  }
   const unhealthy = (ev.bluescreens30d || 0) > 0 || (ev.errorsLast7Days || 0) > 50 || (ev.appCrashes30d || []).length >= 3;
   if (unhealthy) {
     prop("dism_restore", {}, "Signs of system instability: repair the Windows image first (needs internet, 10–30 min).");
@@ -1271,6 +1280,11 @@ function quickPlanWin(s) {
   }
   if (stale) prop("windows_update", { mode: "install", drivers: (s.problemDevices || []).length > 0 }, upd.daysSinceLastUpdate == null ? "Install any pending Windows updates." : `Last Windows update was ${upd.daysSinceLastUpdate} days ago.`);
   if (canWinget) prop("app_updates", { mode: "install" }, "Update outdated programs (browsers, readers, runtimes) silently with winget.");
+  const win11 = Number(sys.build) >= 22000, latest = latestWin11(), verNum = v => /^(\d\d)H([12])$/i.test(v || "") ? +v.slice(0, 2) * 2 + +v[3] : 0;
+  if (win11 && sys.displayVersion && verNum(sys.displayVersion) && verNum(sys.displayVersion) < verNum(latest)) {
+    find("info", `Windows 11 ${latest} is available`, `This PC is on ${sys.displayVersion}. On 24H2/25H2 the upgrade is a small package and one restart.`);
+    prop("feature_update", { mode: "install", assistant: false }, `Upgrade Windows 11 ${sys.displayVersion} → ${latest} (keeps files and programs; needs a restart).`, "medium");
+  }
 
   // Adware / hijacks
   const ad = adwareSigns(s), business = !!sys.partOfDomain;
@@ -1312,6 +1326,11 @@ function quickPlanWin(s) {
     P.splice(0, P.length, ...P.filter(p => p.action !== "windows_update"));
     prop("windows_update", { mode: "install", drivers: drv || (s.problemDevices || []).length > 0 }, `${wu.found} update(s) found by the deep check.`);
   } else if (wu && wu.found === 0) P.splice(0, P.length, ...P.filter(p => p.action !== "windows_update" && p.action !== "reset_windows_update"));
+  const du2 = dr("driver_updates");
+  if (du2 && du2.found > 0 && !P.some(p => p.action === "driver_updates")) prop("driver_updates", { mode: "install", oemtool: true }, `${du2.found} newer driver(s) found by the deep check.`);
+  const fu = dr("feature_update");
+  if (fu && fu.upToDate) P.splice(0, P.length, ...P.filter(p => p.action !== "feature_update"));
+  if (fu && fu.managed) { P.splice(0, P.length, ...P.filter(p => p.action !== "feature_update")); find("info", "Windows version is managed", "Windows Update here is controlled by WSUS/Intune or a policy, so Turbo Button leaves the version alone."); }
   const au = dr("app_updates");
   if (au && au.available === 0) P.splice(0, P.length, ...P.filter(p => p.action !== "app_updates"));
   else if (au && au.available > 0) find("info", `${au.available} program update(s) available`, "Updated silently with winget.");
@@ -1332,12 +1351,12 @@ function quickPlanWin(s) {
   if (du && (du.folders || []).length) find("info", "Biggest folders", du.folders.slice(0, 5).map(f => `${f.path} ${f.gb} GB`).join("; "));
 
   // Anything that needs a restart → restart last
-  const needsRestart = P.some(p => ["schedule_memory_test", "schedule_chkdsk", "windows_update", "network_reset"].includes(p.action)) || s.updates?.rebootPending;
+  const needsRestart = P.some(p => ["schedule_memory_test", "schedule_chkdsk", "windows_update", "driver_updates", "feature_update", "network_reset"].includes(p.action)) || s.updates?.rebootPending;
   if (needsRestart) prop("restart_pc", { minutes: "1" }, "Finish updates/scheduled checks. Do this LAST — write the report first; the session ends when the PC restarts.", "medium", true);
 
   // Order: quick cleanups → startup/apps → settings → security → disk → long repairs → restart last
   const order = ["disk_usage", "cleanup", "component_cleanup", "program_uninstall", "av_remove", "office_remove", "startup_disable", "app_remove", "remove_browser_policies", "reset_proxy", "reset_dns", "reset_hosts",
-    "fast_startup", "privacy", "defender_update", "defender_scan", "chkdsk_scan", "optimize_drive", "reset_windows_update", "dism_restore", "sfc", "app_updates", "windows_update", "schedule_memory_test", "schedule_chkdsk", "defender_offline_scan", "restart_pc"];
+    "fast_startup", "privacy", "defender_update", "defender_scan", "chkdsk_scan", "optimize_drive", "reset_windows_update", "dism_restore", "sfc", "app_updates", "windows_update", "driver_updates", "feature_update", "schedule_memory_test", "schedule_chkdsk", "defender_offline_scan", "restart_pc"];
   P.sort((a, b) => order.indexOf(a.action) - order.indexOf(b.action));
   const crit = F.filter(f => f.severity === "critical").length, warn = F.filter(f => f.severity === "warn").length;
   const health = crit ? "poor" : warn >= 2 ? "fair" : "good";
@@ -1622,6 +1641,8 @@ async function stopScan() {
 }
 
 function since(t0, t1) { if (!t0) return ""; const s = Math.round(((t1 ? new Date(t1) : new Date()) - new Date(t0)) / 1000); return s < 90 ? s + "s" : Math.round(s / 60) + "m"; }
+// Newest yearly Windows 11 release: an H2 version each autumn (26H2 from Oct 2026).
+function latestWin11(d = new Date()) { return String((d.getMonth() >= 9 ? d.getFullYear() : d.getFullYear() - 1) % 100) + "H2"; }
 function resultLine(j) {
   const r = j.result || {};
   if (j.action === "scan") return "Scan complete";
@@ -1632,6 +1653,8 @@ function resultLine(j) {
   if (r.detections) bits.push(r.detections.length + " detection(s)");
   if (r.problemsFound != null) bits.push(r.problemsFound ? "problems found" : "no problems");
   if (j.action === "windows_update") bits.push(r.mode === "install" ? `${r.installed || 0} installed${r.failed ? ", " + r.failed + " failed" : ""}` : `${r.found || 0} update(s) available`);
+  if (j.action === "driver_updates") bits.push((r.mode === "install" ? `${r.installed || 0} driver(s) installed${r.failed ? ", " + r.failed + " failed" : ""}` : `${r.found || 0} newer driver(s)`) + (r.oem ? ` · ${r.oem.tool}: ${r.oem.note}` : r.oemTool && !r.oemInstalled ? ` · ${r.oemTool} not installed` : ""));
+  if (j.action === "feature_update") bits.push(r.upToDate ? `already on ${r.current}` : r.managed ? "managed by IT, left alone" : r.mode === "install" ? (r.result === "installed" ? `${r.target} installed · restart to finish` : r.result === "not offered" ? `${r.target} not offered by Windows Update yet` : `${r.target}: ${r.result}`) : `${r.current} → ${r.target} available`);
   if (j.action === "app_updates") bits.push(r.mode === "install" ? `${r.installed || 0} program(s) updated` : `${r.available || 0} program update(s) available`);
   if (j.action === "program_uninstall" && r.removed) bits.push(`removed (${r.method})`);
   if (j.action === "av_remove" && r.removed) bits.push("removed · " + (r.defenderActive ? "Defender protecting" : "restart to switch Defender on"));
@@ -1669,7 +1692,7 @@ function renderJobs() {
 }
 
 // ---------- guided flow ----------
-const DEEP = [["windows_update", { mode: "check", drivers: true }], ["app_updates", { mode: "list" }], ["disk_usage", {}], ["dism_check", {}], ["sfc_verify", {}], ["chkdsk_scan", { drive: "C" }], ["defender_scan", { type: "quick" }]];
+const DEEP = [["windows_update", { mode: "check", drivers: true }], ["driver_updates", { mode: "check" }], ["feature_update", { mode: "check" }], ["app_updates", { mode: "list" }], ["disk_usage", {}], ["dism_check", {}], ["sfc_verify", {}], ["chkdsk_scan", { drive: "C" }], ["defender_scan", { type: "quick" }]];
 const DEEP_LINUX = [["updates_check", {}], ["disk_usage", {}]];
 const deepList = () => isLinux() ? DEEP_LINUX.concat((S.scan?.physicalDisks || []).filter(d => d.health && !/unknown/.test(d.health)).map(d => ["smart_test", { device: d.device }])) : DEEP;
 const isDeepJob = (j) => j.action === "smart_test" || DEEP.concat(DEEP_LINUX).some(([a, p]) => a === j.action && Object.entries(p).every(([k, v]) => String(j.params?.[k]) === String(v)));

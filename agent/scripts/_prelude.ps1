@@ -105,3 +105,16 @@ function Get-AvRemovalTool($n) {
     default { "the vendor's removal tool (search the vendor's support site)" }
   }
 }
+
+# Feature updates: Turbo Button may briefly pin Windows Update to a target version so it offers
+# that version. The pin is marked and removed afterwards; this also removes one left by a run
+# that was cut short, so a PC is never left pinned.
+$WUPolicyKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate'
+function Clear-TurboPin {
+  $k = Get-ItemProperty $WUPolicyKey -ErrorAction SilentlyContinue
+  if ($k -and $k.TurboButtonPin) {
+    foreach ($n in 'TargetReleaseVersion', 'ProductVersion', 'TargetReleaseVersionInfo', 'TurboButtonPin') { Remove-ItemProperty $WUPolicyKey -Name $n -ErrorAction SilentlyContinue }
+    return $true
+  }
+  return $false
+}

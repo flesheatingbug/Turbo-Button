@@ -175,7 +175,7 @@ In the app, tap **Scan QR code** and point it at the PC's screen. The scan start
 
 **Scan:** hardware and drive health (SMART, SSD wear, temperature), startup speed and what's slowing it down, blue screens with their likely cause, CPU and memory pressure, temperatures, junk files, startup apps, scheduled tasks, preinstalled bloat, installed programs, antivirus and Defender status, Windows Update status, restore points, problem devices, battery wear, and browser and network hijacks (search engine, extensions, forced policies, proxy, DNS, hosts file).
 
-**Optional deep checks** (read-only, 10–30 min): pending Windows and driver updates, outdated programs (winget), system-file and Windows-image corruption (SFC/DISM verify), file-system errors (CHKDSK online), a Defender quick scan, and what's filling the disk.
+**Optional deep checks** (read-only, 10–30 min): pending Windows and driver updates, whether a newer Windows 11 version is out, outdated programs (winget), system-file and Windows-image corruption (SFC/DISM verify), file-system errors (CHKDSK online), a Defender quick scan, and what's filling the disk.
 
 **Fixes:**
 
@@ -189,7 +189,7 @@ In the app, tap **Scan QR code** and point it at the PC's screen. The scan start
 | Repair | SFC, DISM RestoreHealth, CHKDSK (scheduled), memory test, reset Windows Update, network stack, Store, search index |
 | Adware | Reset proxy, DNS and hosts; remove forced browser policies |
 | Security | Defender definitions update, quick/full/offline scan |
-| Updates | Windows Update (optionally with drivers), update all programs via winget |
+| Updates | Windows Update, driver updates (Windows Update plus Dell Command Update / Lenovo System Update / HP Image Assistant, installed for you on Dell and Lenovo), upgrade to the newest Windows 11 version (e.g. 25H2 → 26H2), update all programs via winget |
 | Finish | Restart with a countdown (or cancel it) |
 
 </details>
@@ -240,7 +240,7 @@ The report also has a **Basic report (no AI)** button. It builds the report from
 
 - ✅ **Nothing happens without you.** Every change is approved on the phone, and anything risky is marked "ask the customer".
 - 🛟 **Undo point first.** A restore point (Windows) or snapshot (Linux, if one is set up) is made before the first change.
-- 🛡 **Security is never weakened.** It won't touch Defender, the firewall, Windows Update, UAC, core services or (on Linux) systemd, the display manager, NetworkManager, polkit or AppArmor/SELinux. Drivers and runtimes can't be uninstalled, Microsoft Defender can never be removed, and antivirus or Office removal always asks first.
+- 🛡 **Security is never weakened.** It won't touch Defender, the firewall, Windows Update, UAC, core services or (on Linux) systemd, the display manager, NetworkManager, polkit or AppArmor/SELinux. Drivers and runtimes can't be uninstalled, Microsoft Defender can never be removed, and antivirus or Office removal always asks first. The one Windows Update setting it ever sets is a temporary version target while upgrading Windows 11, removed straight afterwards; PCs managed by WSUS or Intune are left alone, and Microsoft's compatibility holds are never bypassed.
 - 🏢 **Business PCs are left alone.** Proxy, DNS and browser-policy resets are never proposed on domain-joined PCs.
 - 💾 **Backups.** The hosts file and browser policies are backed up before they're reset.
 - 🔐 **Locked to your phone.** The agent only accepts requests carrying the session key from the QR code. The customer screen only answers the PC itself.

@@ -33,7 +33,7 @@ var iconPNG []byte
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.10.6"
+const Version = "0.10.7"
 
 type Job struct {
 	ID        int             `json:"id"`
@@ -166,6 +166,9 @@ func (a *Agent) enqueue(actionID string, params map[string]any, reason string, a
 			env["PCM_"+k] = v
 		}
 		title, modifies = act.Title, act.Modifies
+		if env["PCM_mode"] == "check" && (actionID == "windows_update" || actionID == "driver_updates" || actionID == "feature_update") {
+			modifies = false // only looks; can be stopped and needs no restore point
+		}
 		timeout = time.Duration(act.TimeoutMin) * time.Minute
 		if timeout == 0 {
 			timeout = 30 * time.Minute
