@@ -33,7 +33,7 @@ var iconPNG []byte
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.10.2"
+const Version = "0.10.3"
 
 type Job struct {
 	ID        int             `json:"id"`
@@ -450,7 +450,7 @@ func (a *Agent) Handler() http.Handler {
 		if jobs == nil {
 			jobs = []*Job{}
 		}
-		writeJSON(w, map[string]any{"computer": host, "version": Version, "phone": a.phoneSeen, "resumed": a.resumed,
+		writeJSON(w, map[string]any{"computer": host, "version": Version, "phone": a.phoneSeen, "resumed": a.resumed, "remote": a.remoteStatus(),
 			"url": a.controlURL, "qr": a.qrSVG, "jobs": jobs, "startedAt": a.started})
 	})
 	// The screen window is being closed: end the session (unless it reloads, or a restart we started is underway).
@@ -482,7 +482,7 @@ func (a *Agent) Handler() http.Handler {
 		host := hostName()
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		writeJSON(w, map[string]any{"agent": "Turbo Button", "version": Version, "computer": host, "catalog": activeCatalog(), "os": agentOS(), "build": Build, "standby": a.relayConf.Standby, "relay": a.relayConf.URL, "relayStatus": a.relayStatus(),
+		writeJSON(w, map[string]any{"agent": "Turbo Button", "version": Version, "computer": host, "catalog": activeCatalog(), "os": agentOS(), "build": Build, "standby": a.relayConf.Standby, "relay": a.relayConf.URL, "relayStatus": a.remoteStatus(),
 			"machineId": a.machineID, "resumed": a.resumed,
 			"autoRestorePoint": a.autoRestore, "restorePointDone": a.restoreTried, "startedAt": a.started,
 			"protectedServices": protectedServiceList(), "protectedAppPrefixes": protectedAppPrefixes})
@@ -607,4 +607,19 @@ func (a *Agent) relayStatus() string {
 		return ""
 	}
 	return a.relay.Status()
+}
+
+// remoteStatus is the one-line relay status shown on the customer screen (and to the phone).
+func (a *Agent) remoteStatus() string {
+	if a.relay != nil {
+		return a.relay.Status()
+	}
+	if c := confFile(); c != "" {
+		return "remote access off: " + c + " has no relay= and relaykey= lines"
+	}
+	dir := "the program's folder"
+	if exe, err := os.Executable(); err == nil {
+		dir = filepath.Dir(exe)
+	}
+	return "remote access off: no turbobutton.conf in " + dir
 }

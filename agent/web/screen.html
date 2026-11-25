@@ -69,7 +69,7 @@
       <div class="panel" style="display:flex;flex-direction:column;min-height:0"><h2>Completed</h2><div class="done-list" id="done"><span class="mut">Nothing yet.</span></div></div>
     </div>
     <div class="right">
-      <div class="panel" id="qrPanel"><h2>Technician</h2><div class="qr" id="qr"></div><div class="mut" id="qrCap" style="margin-top:8px;font-size:13px">Scan with the Turbo Button app to connect.</div></div>
+      <div class="panel" id="qrPanel"><h2>Technician</h2><div class="qr" id="qr"></div><div class="mut" id="qrCap" style="margin-top:8px;font-size:13px">Scan with the Turbo Button app to connect.</div><div class="mut" id="remote" style="margin-top:6px;font-size:12px;word-break:break-word"></div></div>
       <div class="panel"><h2>Session</h2>
         <div class="stat"><span>Fixes done</span><b id="nFix">0</b></div>
         <div class="stat"><span>Space freed</span><b id="freed">0 B</b></div>
@@ -112,6 +112,7 @@ function render() {
   const fixes = jobs.filter(j => j.action !== "scan" && j.status === "done");
   $("status").textContent = !st.phone ? "WAITING FOR THE TECHNICIAN" : running ? (running.action === "scan" ? "CHECKING YOUR PC" : "SERVICING YOUR PC") : queued ? "WORKING" : jobs.length ? "READY" : "CONNECTED";
   $("sub").textContent = !st.phone ? "The technician connects with their phone." : running || queued ? `${(running ? 1 : 0) + queued} step(s) in progress` : st.resumed ? "Resumed after restart." : "";
+  $("remote").textContent = st.remote ? "⇄ " + st.remote : "";
   $("qrCap").innerHTML = st.phone ? '<span style="color:var(--hi)">Phone connected ✓</span><br>Scan again to reconnect, or to add this PC on another phone.' : "Scan with the Turbo Button app to connect.";
   if (!$("qr").innerHTML && st.qr) $("qr").innerHTML = st.qr;
   if (running) {
