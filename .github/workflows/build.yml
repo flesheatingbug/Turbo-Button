@@ -169,7 +169,18 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           (cd out && sha256sum TurboButton.exe TurboButton-x86_64.AppImage TurboButton-linux-x86_64 TurboButton-linux-arm64 TurboButton.apk > SHA256SUMS && cat SHA256SUMS)
-          for i in 1 2 3 4 5 6; do gh release delete latest -R "$REPO" --yes --cleanup-tag 2>&1 || true; gh release view latest -R "$REPO" >/dev/null 2>&1 || break; echo "GitHub didn't delete the old release yet, retrying"; sleep 20; done
-          gh release create latest out/TurboButton.exe out/TurboButton-x86_64.AppImage out/TurboButton-linux-x86_64 out/TurboButton-linux-arm64 out/TurboButton.apk out/turbo-relay-linux-x86_64 out/turbo-relay-linux-arm64 out/SHA256SUMS -R "$REPO" --prerelease \
-            --target "$GITHUB_SHA" --title "Latest build $(date -u '+%Y-%m-%d %H:%M') UTC" \
-            --notes "Build ${GITHUB_RUN_NUMBER}, commit ${GITHUB_SHA::7}. Install TurboButton.apk on your phone; copy TurboButton.exe (Windows) and TurboButton-x86_64.AppImage (Linux) to a USB stick."
+          # GitHub's release API sometimes errors (500/502): clear out any old or half-made "latest"
+          # release (drafts included) and try the whole thing again a few times.
+          clear() {
+            for id in $(gh api "repos/$REPO/releases?per_page=100" -q '.[] | select(.tag_name=="latest") | .id' 2>/dev/null); do gh api -X DELETE "repos/$REPO/releases/$id" || true; done
+            gh api -X DELETE "repos/$REPO/git/refs/tags/latest" >/dev/null 2>&1 || true
+          }
+          ok=
+          for i in 1 2 3 4 5; do
+            clear
+            if gh release create latest out/TurboButton.exe out/TurboButton-x86_64.AppImage out/TurboButton-linux-x86_64 out/TurboButton-linux-arm64 out/TurboButton.apk out/turbo-relay-linux-x86_64 out/turbo-relay-linux-arm64 out/SHA256SUMS -R "$REPO" --prerelease \
+              --target "$GITHUB_SHA" --title "Latest build $(date -u '+%Y-%m-%d %H:%M') UTC" \
+              --notes "Build ${GITHUB_RUN_NUMBER}, commit ${GITHUB_SHA::7}. Install TurboButton.apk on your phone; copy TurboButton.exe (Windows) and TurboButton-x86_64.AppImage (Linux) to a USB stick."; then ok=1; break; fi
+            echo "Publishing failed (attempt $i), retrying in 30s"; sleep 30
+          done
+          [ -n "$ok" ]
