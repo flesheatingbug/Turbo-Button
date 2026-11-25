@@ -169,7 +169,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           (cd out && sha256sum TurboButton.exe TurboButton-x86_64.AppImage TurboButton-linux-x86_64 TurboButton-linux-arm64 TurboButton.apk > SHA256SUMS && cat SHA256SUMS)
-          gh release delete latest -R "$REPO" --yes --cleanup-tag || true
+          for i in 1 2 3 4 5 6; do gh release delete latest -R "$REPO" --yes --cleanup-tag 2>&1 || true; gh release view latest -R "$REPO" >/dev/null 2>&1 || break; echo "GitHub didn't delete the old release yet, retrying"; sleep 20; done
           gh release create latest out/TurboButton.exe out/TurboButton-x86_64.AppImage out/TurboButton-linux-x86_64 out/TurboButton-linux-arm64 out/TurboButton.apk out/turbo-relay-linux-x86_64 out/turbo-relay-linux-arm64 out/SHA256SUMS -R "$REPO" --prerelease \
             --target "$GITHUB_SHA" --title "Latest build $(date -u '+%Y-%m-%d %H:%M') UTC" \
             --notes "Build ${GITHUB_RUN_NUMBER}, commit ${GITHUB_SHA::7}. Install TurboButton.apk on your phone; copy TurboButton.exe (Windows) and TurboButton-x86_64.AppImage (Linux) to a USB stick."
