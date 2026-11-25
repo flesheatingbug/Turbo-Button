@@ -343,7 +343,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.10.4";
+const PAGE_VERSION = "0.10.5";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -1660,7 +1660,7 @@ function renderJobs() {
     ${j.auto ? '<div class="mut">Added automatically</div>' : ""}
     ${j.status === "done" ? `<div style="color:var(--ok);font-size:13px">${esc(resultLine(j))}</div>` : ""}
     ${j.error ? `<div style="color:var(--bad);font-size:13px">${esc(j.error)}</div>` : ""}
-    ${(j.output || j.result) && j.action !== "scan" ? `<details><summary>Details</summary><pre>${esc((j.output || "") + (j.result ? "\n" + JSON.stringify(j.result, null, 1) : ""))}</pre></details>` : ""}</div>`).join("") + earlierHTML;
+    ${(j.output || j.result) && (j.action !== "scan" || j.status === "failed") ? `<details${j.action === "scan" ? " open" : ""}><summary>Details</summary><pre>${esc((j.output || "") + (j.result ? "\n" + JSON.stringify(j.result, null, 1) : ""))}</pre></details>` : ""}</div>`).join("") + earlierHTML;
   $("jobsView").querySelectorAll("[data-cancel]").forEach(b => b.onclick = async () => { try { await api(`/api/jobs/${b.dataset.cancel}/cancel`, { method: "POST" }); pollSoon(); } catch (e) { toast(e.message); } });
   $("jobsView").querySelectorAll("[data-stop]").forEach(b => b.onclick = async () => {
     b.disabled = true; b.textContent = "Stopping…";
