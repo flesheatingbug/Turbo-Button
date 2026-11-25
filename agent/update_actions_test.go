@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestNewUpdateActions(t *testing.T) {
 	for _, c := range []struct {
@@ -31,5 +34,21 @@ func TestNewUpdateActions(t *testing.T) {
 			t.Fatalf("%s %v: err=%v", c.id, c.p, err)
 		}
 		t.Log(c.id, v, err)
+	}
+}
+
+func TestEmbeddedConf(t *testing.T) {
+	p := t.TempDir() + "/TurboButton.exe"
+	os.WriteFile(p, []byte("MZ fake program bytes"), 0755)
+	if embeddedConf(p) != "" {
+		t.Fatal("plain file shouldn't have settings")
+	}
+	if err := appendConf(p, "relay=https://r.example\nrelaykey=abc\nstandby=yes\n"); err != nil {
+		t.Fatal(err)
+	}
+	var c relayConf
+	parseConf(&c, embeddedConf(p))
+	if c.URL != "https://r.example" || c.Key != "abc" || !c.Standby {
+		t.Fatalf("got %+v", c)
 	}
 }

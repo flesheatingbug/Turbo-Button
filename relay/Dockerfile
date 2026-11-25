@@ -6,6 +6,8 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -
 
 FROM scratch
 COPY --from=build /turbo-relay /turbo-relay
+# CA certificates so the "Download Turbo Button" button can fetch the latest build from GitHub.
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 ENV CONFIG_DIR=/config LISTEN=:8080 TRUST_PROXY=1
 EXPOSE 8080
 VOLUME /config

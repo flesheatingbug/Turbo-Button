@@ -85,6 +85,14 @@ func selfUpdate() bool {
 		fmt.Println("Update failed, carrying on with this version:", err)
 		return false
 	}
+	// Keep relay settings that were built into this copy (from the relay's download button).
+	if conf := embeddedConf(target); conf != "" {
+		if err := appendConf(newPath, conf); err != nil {
+			os.Remove(newPath)
+			fmt.Println("Update failed, carrying on with this version: couldn't copy the built-in relay settings:", err)
+			return false
+		}
+	}
 	final, err := swapIn(newPath, target)
 	if err != nil {
 		fmt.Println("Couldn't replace the old file (" + err.Error() + "); running the new build from a temporary copy.")

@@ -14,6 +14,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -30,9 +31,10 @@ import (
 )
 
 type relayConf struct {
-	URL     string `json:"url,omitempty"`
-	Key     string `json:"key,omitempty"`
-	Standby bool   `json:"standby,omitempty"`
+	URL      string `json:"url,omitempty"`
+	Key      string `json:"key,omitempty"`
+	Standby  bool   `json:"standby,omitempty"`
+	Embedded bool   `json:"-"` // settings came built into the program
 }
 
 func (c relayConf) on() bool { return c.URL != "" && c.Key != "" }
@@ -75,27 +77,97 @@ func argValue(name string) (string, bool) {
 	return "", false
 }
 
-// loadRelayConf: turbobutton.conf, then environment, then command-line options (last wins).
+// Settings can be built into the program itself: the relay's download button appends them to
+// TurboButton.exe as  <conf text> <uint32 length, little-endian> "TBCONF01". Windows ignores
+// data after the program, and self-update copies the block onto the new build.
+const confMagic = "TBCONF01"
+
+func embeddedConf(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil || fi.Size() < 12 {
+		return ""
+	}
+	tail := make([]byte, 12)
+	if _, err := f.ReadAt(tail, fi.Size()-12); err != nil || string(tail[4:]) != confMagic {
+		return ""
+	}
+	n := int64(binary.LittleEndian.Uint32(tail[:4]))
+	if n == 0 || n > 8192 || n > fi.Size()-12 {
+		return ""
+	}
+	b := make([]byte, n)
+	if _, err := f.ReadAt(b, fi.Size()-12-n); err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// appendConf adds a settings block to the end of a program file.
+func appendConf(path, conf string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		return err
+	}
+	tail := make([]byte, 4)
+	binary.LittleEndian.PutUint32(tail, uint32(len(conf)))
+	_, err = f.Write(append(append([]byte(conf), tail...), confMagic...))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// selfPath is the file Turbo Button was started from (the AppImage itself on Linux).
+func selfPath() string {
+	if ai := os.Getenv("APPIMAGE"); ai != "" {
+		return ai
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if p, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = p
+	}
+	return exe
+}
+
+func parseConf(c *relayConf, text string) {
+	sc := bufio.NewScanner(strings.NewReader(text))
+	for sc.Scan() {
+		k, v, ok := strings.Cut(strings.TrimSpace(strings.TrimPrefix(sc.Text(), "\ufeff")), "=")
+		if !ok || strings.HasPrefix(k, "#") {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(k)) {
+		case "relay":
+			c.URL = strings.TrimSpace(v)
+		case "relaykey", "relay_key", "key":
+			c.Key = strings.TrimSpace(v)
+		case "standby":
+			c.Standby = isYes(v)
+		}
+	}
+}
+
+// loadRelayConf: settings built into the program, then turbobutton.conf, then environment,
+// then command-line options (last wins).
 func loadRelayConf() relayConf {
 	var c relayConf
+	if p := selfPath(); p != "" {
+		if e := embeddedConf(p); e != "" {
+			parseConf(&c, e)
+			c.Embedded = true
+		}
+	}
 	if p := confFile(); p != "" {
-		if f, err := os.Open(p); err == nil {
-			sc := bufio.NewScanner(f)
-			for sc.Scan() {
-				k, v, ok := strings.Cut(strings.TrimSpace(strings.TrimPrefix(sc.Text(), "\ufeff")), "=")
-				if !ok || strings.HasPrefix(k, "#") {
-					continue
-				}
-				switch strings.ToLower(strings.TrimSpace(k)) {
-				case "relay":
-					c.URL = strings.TrimSpace(v)
-				case "relaykey", "relay_key", "key":
-					c.Key = strings.TrimSpace(v)
-				case "standby":
-					c.Standby = isYes(v)
-				}
-			}
-			f.Close()
+		if b, err := os.ReadFile(p); err == nil && len(b) < 64*1024 {
+			parseConf(&c, string(b))
 		}
 	}
 	if v := os.Getenv("TURBO_RELAY"); v != "" {

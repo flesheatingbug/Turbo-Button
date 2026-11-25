@@ -324,7 +324,9 @@ Not using Docker? The release also has `turbo-relay-linux-x86_64` / `-arm64`: ru
 
 ### Point the agents at it
 
-On the relay's page, **Agent setup** shows two lines. Save them as `turbobutton.conf` **next to TurboButton.exe / the AppImage** on your USB stick:
+**Easiest:** on the relay's page, **Agent setup → Download** gives you TurboButton.exe with your relay built in (or an office-PC copy with standby on, or a Linux zip with the AppImage and its conf). Nothing else to copy, and it keeps the settings when it updates itself. If you make a new relay key, download again.
+
+Or by hand: **Agent setup** shows two lines. Save them as `turbobutton.conf` **next to TurboButton.exe / the AppImage** on your USB stick (a conf file overrides built-in settings):
 
 ```
 relay=https://turbo.example.com

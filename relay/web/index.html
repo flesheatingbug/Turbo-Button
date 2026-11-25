@@ -18,7 +18,8 @@
   .mut { color:var(--mut); } .bad { color:var(--bad); } .warn { color:var(--warn); }
   input { width:100%; background:#000; color:var(--text); border:1px solid var(--mut); padding:9px 10px; font:inherit; margin:4px 0 10px; }
   input:focus { outline:1px solid var(--text); }
-  button { background:transparent; color:var(--text); border:1px solid var(--text); padding:8px 14px; font:inherit; cursor:pointer; letter-spacing:.06em; }
+  button, a.btn { background:transparent; color:var(--text); border:1px solid var(--text); padding:8px 14px; font:inherit; cursor:pointer; letter-spacing:.06em; }
+  a.btn { display:inline-block; text-decoration:none; margin:0 6px 6px 0; }
   button.b { background:var(--text); color:#000; text-shadow:none; }
   button.sm { padding:3px 9px; font-size:13px; }
   button:disabled { opacity:.5; }
@@ -84,7 +85,14 @@
 
     <div class="card">
       <h2>Agent setup</h2>
-      <p class="mut">Save this as <b>turbobutton.conf</b> next to TurboButton.exe / the AppImage on your USB stick. The agent then also connects through this relay, so your phone can reach it from anywhere.</p>
+      <p class="mut"><b>Easiest:</b> download Turbo Button with this relay already built in. Nothing else to copy; it keeps the settings when it updates itself.</p>
+      <div class="row">
+        <a class="btn" href="/ui/download?os=windows" download>Windows (TurboButton.exe)</a>
+        <a class="btn" href="/ui/download?os=windows&amp;standby=1" download>Windows, office PC (standby)</a>
+        <a class="btn" href="/ui/download?os=linux" download>Linux (AppImage + conf, zip)</a>
+      </div>
+      <p class="mut">The first download takes a moment while the relay fetches the latest build from GitHub. If you make a new relay key below, download again: older copies stop connecting.</p>
+      <p class="mut">Or save this as <b>turbobutton.conf</b> next to TurboButton.exe / the AppImage on your USB stick. The agent then also connects through this relay, so your phone can reach it from anywhere.</p>
       <pre id="conf"></pre>
       <p class="mut">For office PCs you want to reach while Turbo Button runs on them, add a line <b>standby=yes</b>: they stay paired with your phone and show up in the app's PC list.</p>
       <div class="row"><button id="copyConf">Copy</button><button id="rotate">New relay key…</button></div>
