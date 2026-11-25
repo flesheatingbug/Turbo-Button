@@ -15,6 +15,7 @@ type Param struct {
 	Enum    []string `json:"enum,omitempty"`
 	Pattern string   `json:"pattern,omitempty"`
 	Desc    string   `json:"desc"`
+	Opt     bool     `json:"optional,omitempty"` // may be left out (bool → false, string → blank)
 }
 
 type Action struct {
@@ -127,14 +128,14 @@ var Catalog = []Action{
 		Desc: "mode=check lists newer drivers; mode=install installs driver updates from Windows Update, then runs the PC maker's own updater (Dell Command Update, Lenovo System Update, HP Image Assistant) if it's installed. oemtool=true installs Dell/Lenovo's updater with winget first if missing. Also reports graphics drivers that are still old.",
 		Params: []Param{
 			{Name: "mode", Type: "enum", Enum: []string{"check", "install"}, Desc: "check or install"},
-			{Name: "oemtool", Type: "bool", Desc: "install the maker's updater if missing"}}},
+			{Name: "oemtool", Type: "bool", Opt: true, Desc: "install the maker's updater if missing"}}},
 
 	{ID: "feature_update", Title: "Upgrade to the newest Windows 11 version", Category: "updates", Risk: "medium", Long: true, Modifies: true, TimeoutMin: 240, Reboot: true,
 		Desc: "mode=check compares this PC's Windows version (e.g. 25H2) with the newest yearly release (read-only). mode=install briefly pins Windows Update to that version so it offers it (a quick enablement package on 24H2/25H2), installs it and removes the pin; needs a restart. assistant=true falls back to Microsoft's Windows 11 Installation Assistant (full in-place upgrade, keeps files and programs, 1h+) if Windows Update won't offer it. Leaves PCs managed by WSUS/Intune alone and never overrides Microsoft's compatibility holds.",
 		Params: []Param{
 			{Name: "mode", Type: "enum", Enum: []string{"check", "install"}, Desc: "check or install"},
-			{Name: "version", Type: "string", Pattern: `^(\d\dH[12])?$`, Desc: "target version like 26H2 (blank = newest)"},
-			{Name: "assistant", Type: "bool", Desc: "fall back to the Installation Assistant"}}},
+			{Name: "version", Type: "string", Opt: true, Pattern: `^(\d\dH[12])?$`, Desc: "target version like 26H2 (blank = newest)"},
+			{Name: "assistant", Type: "bool", Opt: true, Desc: "fall back to the Installation Assistant"}}},
 
 	{ID: "app_updates", Title: "Update installed programs (winget)", Category: "updates", Risk: "low", Long: true, TimeoutMin: 120,
 		Desc:   "mode=list shows programs with updates; mode=install silently updates all of them with Windows Package Manager. Needs App Installer (winget).",
@@ -261,6 +262,9 @@ func ValidateParams(a *Action, in map[string]any) (map[string]string, error) {
 	for _, p := range a.Params {
 		raw, ok := in[p.Name]
 		if !ok {
+			if p.Opt {
+				continue
+			}
 			return nil, fmt.Errorf("missing parameter %q", p.Name)
 		}
 		var v string

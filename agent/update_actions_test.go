@@ -11,6 +11,11 @@ func TestNewUpdateActions(t *testing.T) {
 		{"driver_updates", map[string]any{"mode": "install", "oemtool": true}, true},
 		{"feature_update", map[string]any{"mode": "install", "version": "26H2", "assistant": false}, true},
 		{"feature_update", map[string]any{"mode": "install", "version": "26H2; rm"}, false},
+		{"feature_update", map[string]any{"mode": "check"}, true},
+		{"driver_updates", map[string]any{"mode": "check"}, true},
+		{"windows_update", map[string]any{"mode": "check", "drivers": true}, true},
+		{"feature_update", map[string]any{"mode": "install", "assistant": false}, true},
+		{"defender_remove", map[string]any{}, true},
 	} {
 		var a *Action
 		for i := range Catalog {
