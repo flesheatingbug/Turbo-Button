@@ -276,7 +276,8 @@
     <div class="card">
       <h2>Ask the AI about this PC</h2>
       <textarea id="askQ" placeholder="e.g. Why does it take so long to boot?"></textarea>
-      <div class="row" style="margin-top:8px"><button class="b2" id="askBtn">Ask</button></div>
+      <div class="row" style="margin-top:8px"><button class="b2" id="askBtn">Ask</button><button class="b2" id="askApp">Ask in AI app</button></div>
+      <div class="mut" id="askHint" style="margin-top:6px"></div>
       <div id="askOut" style="margin-top:8px; white-space:pre-wrap"></div>
     </div>
   </section>
@@ -335,7 +336,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.9.14";
+const PAGE_VERSION = "0.9.15";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -919,6 +920,7 @@ function planUserChat() {
 // so the AI treats the instruction as the request (instructions inside a long paste get treated as content).
 function aiAppSend(kind) {
   const plan = kind === "plan";
+  try { localStorage.removeItem("turbo.askPending"); } catch {}
   const system = plan ? planSystem() : REPORT_SYSTEM, shape = plan ? "summary, health, findings, proposals, manual" : "headline, customerSummary, workDone, issuesFound, recommendations, technicalNotes";
   const data = plan ? planUserChat() : reportUser();
   const message = `Turbo Button ${plan ? "plan" : "report"} request: read the attached file and follow the INSTRUCTIONS section in it exactly. ` +
@@ -928,19 +930,24 @@ function aiAppSend(kind) {
       "Reply with ONE JSON object inside a single ```json code block, typed directly in your chat reply, and nothing else. " +
       "Do NOT create a file, document, artifact or canvas, and don't use tools or code execution. Keep every text field short (under 15 words) and give at most 15 proposals.\n\n" +
       system + "\n\n=== DATA ===\n" + data + "\n=== END ===\n";
-    flash("PROMPT READY ✓", "Pick your AI app and tap send");
-    let answered = false;
-    window.__shareResult = (state, detail) => {
-      answered = true;
-      if (state === "ok") toast("If the AI app's message box is empty, paste — the instruction is on your clipboard.", 7000);
-      else { copyText(chatPrompt(system, data, shape)); toast("Couldn't open the share sheet (" + detail + "). The whole prompt is copied instead — paste it into your AI app.", 12000); }
-    };
-    setTimeout(() => {
-      try { window.TurboNative.shareToAI(`TurboButton-${plan ? "plan" : "report"}-request.txt`, content, message); }
-      catch (e) { window.__shareResult("error", e.message); }
-    }, 700);
-    setTimeout(() => { if (!answered) { copyText(chatPrompt(system, data, shape)); toast("The share sheet didn't open. The whole prompt is copied instead — paste it into your AI app.", 12000); } }, 4000);
+    shareToApp(`TurboButton-${plan ? "plan" : "report"}-request.txt`, content, message, chatPrompt(system, data, shape));
   } else copyText(chatPrompt(system, data, shape));
+}
+// Opens the share sheet with a file (the data) and a short message (the request).
+// If the share sheet can't open, the whole prompt is copied instead.
+function shareToApp(fileName, content, message, fallback) {
+  flash("PROMPT READY ✓", "Pick your AI app and tap send");
+  let answered = false;
+  window.__shareResult = (state, detail) => {
+    answered = true;
+    if (state === "ok") toast("If the AI app's message box is empty, paste — the request is on your clipboard.", 7000);
+    else { copyText(fallback); toast("Couldn't open the share sheet (" + detail + "). The whole prompt is copied instead — paste it into your AI app.", 12000); }
+  };
+  setTimeout(() => {
+    try { window.TurboNative.shareToAI(fileName, content, message); }
+    catch (e) { window.__shareResult("error", e.message); }
+  }, 700);
+  setTimeout(() => { if (!answered) { copyText(fallback); toast("The share sheet didn't open. The whole prompt is copied instead — paste it into your AI app.", 12000); } }, 4000);
 }
 $("planCopy").onclick = () => {
   if (!S.scan) { toast("Run a scan first"); show("scan"); return; }
@@ -1364,13 +1371,30 @@ function buildManual() {
   };
 }
 
+const askSystem = () => `You are an expert ${isLinux() ? "Linux" : "Windows"} repair technician's assistant. Answer concisely and practically, for a technician, using the scan data. Plain text, no markdown tables.`;
+const askWork = () => JSON.stringify(allJobs().filter(j => j.status === "done" || j.status === "failed").map(j => ({ action: j.action, params: j.params, status: j.status, result: j.result, error: j.error })));
+// Free route: the scan goes to the Claude/ChatGPT app as a file, the question as the message.
+// The technician can keep chatting there; sharing the reply back shows it here.
+function askInApp(q) {
+  if (!S.scan) { toast("Run a scan first"); show("scan"); return; }
+  const content = `TURBO BUTTON — DATA ABOUT THE PC BEING REPAIRED\n\n${askSystem()} Answer the technician's question in the chat message using this data. ` +
+    `The technician may ask follow-up questions in the same chat.\n\n=== SCAN (${S.name || "PC"}) ===\n${compactScan(S.scan, true)}\n\n=== WORK DONE SO FAR ===\n${askWork()}\n=== END ===\n`;
+  const message = `I'm a computer repair technician. The attached file is a diagnostic scan of a customer's ${isLinux() ? "Linux" : "Windows"} PC (${S.name || ""}). Using it, answer: ${q}`;
+  try { localStorage.setItem("turbo.askPending", String(Date.now())); } catch {}
+  if (NATIVE && window.TurboNative.shareToAI) shareToApp("TurboButton-pc-scan.txt", content, message, message + "\n\n" + content);
+  else { copyText(message + "\n\n" + content); toast("Copied: paste it into a chat in your AI app.", 6000); }
+  $("askOut").textContent = "";
+  $("askHint").textContent = NATIVE ? "Sent to your AI app with this PC's scan. Keep chatting there. To keep an answer here, tap Share → Turbo Button on the reply."
+    : "Copied with this PC's scan. Paste it into a chat in your AI app.";
+}
+$("askApp").onclick = () => { const q = $("askQ").value.trim(); if (!q) { toast("Type a question first"); return; } askInApp(q); };
 $("askBtn").onclick = async () => {
   const q = $("askQ").value.trim(); if (!q) return;
+  if (getAI().provider === "manual") { askInApp(q); return; } // no API key: use the AI app
+  $("askHint").textContent = "";
   $("askOut").innerHTML = '<span class="spin"></span>';
   try {
-    const done = S.jobs.filter(j => j.status === "done" || j.status === "failed").map(j => ({ action: j.action, params: j.params, status: j.status, result: j.result, error: j.error }));
-    const t = await askAI(`You are an expert ${isLinux() ? "Linux" : "Windows"} repair technician's assistant. Answer concisely and practically, for a technician, using the scan data. Plain text, no markdown tables.`,
-      "SCAN:\n" + (S.scan ? compactScan(S.scan) : "none yet") + "\n\nWORK DONE:\n" + JSON.stringify(done) + "\n\nQUESTION: " + q, 2000);
+    const t = await askAI(askSystem(), "SCAN:\n" + (S.scan ? compactScan(S.scan) : "none yet") + "\n\nWORK DONE:\n" + askWork() + "\n\nQUESTION: " + q, 2000);
     $("askOut").textContent = t;
   } catch (e) { $("askOut").textContent = "AI error: " + e.message; }
 };
@@ -1772,6 +1796,12 @@ function handleShared(text) {
     usePlan(o, "AI app (shared)"); show("plan"); flash("PLAN RECEIVED ✓", `${o.proposals.length} suggestion(s)`); toast(o._repaired ? "Plan received — the reply was cut off, so some suggestions may be missing." : "Plan received from your AI app.", 5000); return;
   }
   if (o && (o.headline || o.customerSummary)) { useReport(o); show("report"); toast("Report received from your AI app."); return; }
+  // Not JSON, after "Ask in AI app": it's the answer to the technician's question.
+  let askAt = 0; try { askAt = +localStorage.getItem("turbo.askPending") || 0; } catch {}
+  if (Date.now() - askAt < 3 * 3600e3) {
+    show("plan"); $("askOut").textContent = text.trim(); $("askHint").textContent = "Answer shared from your AI app.";
+    setTimeout(() => $("askOut").scrollIntoView({ block: "center" }), 200); toast("Answer received", 3000); return;
+  }
   // Not JSON: drop it into the plan box so nothing is lost.
   $("planPaste").value = text; $("planPaste").closest("details").open = true; show("plan");
   toast("Couldn't use what was shared: " + explainNoPlan(text, "no JSON"), 10000);
@@ -1781,6 +1811,8 @@ document.querySelectorAll(".aiSteps").forEach(el => el.innerHTML = NATIVE
   ? "1. Tap <b>Send to AI app</b> and pick Claude or ChatGPT, then send.<br>2. On the AI's reply tap <b>Share → Turbo Button</b>. The plan loads by itself."
   : "1. Tap Copy and paste it into a <b>new</b> chat in your AI app.<br>2. Copy the AI's whole reply and paste it below.");
 if (NATIVE) { $("planCopy").textContent = "Send to AI app"; $("reportCopy").textContent = "Send to AI app"; }
+function askButtons() { const manual = getAI().provider === "manual"; $("askBtn").style.display = manual ? "none" : ""; $("askApp").textContent = manual ? "Ask (in your AI app)" : "Ask in AI app"; }
+askButtons(); setInterval(askButtons, 2000);
 
 // ---------- sessions: connect, switch, end ----------
 $("autoRP").onchange = async () => { try { await api("/api/settings", { method: "POST", body: JSON.stringify({ autoRestorePoint: $("autoRP").checked }) }); } catch (e) { toast(e.message); } };
