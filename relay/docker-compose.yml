@@ -1,0 +1,25 @@
+# Turbo Button relay — lets the phone app reach PCs that aren't on the same network.
+# Put it behind Nginx Proxy Manager (or any HTTPS reverse proxy) with Websockets Support on.
+services:
+  turbo-relay:
+    build:
+      # Built straight from GitHub; no registry needed. To build from a local copy use: context: .
+      context: https://github.com/flesheatingbug/Turbo-Button.git#main:relay
+    image: turbo-relay:local
+    container_name: turbo-relay
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+      - PUBLIC_URL=${PUBLIC_URL}
+      - TRUST_PROXY=1
+    volumes:
+      - ${APPDATA}/turbo-relay:/config
+    ports:
+      - "${PORT}:8080"
+    restart: unless-stopped
+    # If Nginx Proxy Manager runs in Docker on its own network, join it instead of publishing a port:
+    # networks: [proxy]
+# networks:
+#   proxy:
+#     external: true
+#     name: myown

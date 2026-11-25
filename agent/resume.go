@@ -24,6 +24,7 @@ type resumeState struct {
 	LastScan     json.RawMessage `json:"lastScan"`
 	Started      time.Time       `json:"started"`
 	SavedAt      time.Time       `json:"savedAt"`
+	Relay        relayConf       `json:"relay,omitempty"`
 }
 
 func resumeFile() string   { return filepath.Join(resumeDir(), "resume.json") }
@@ -60,7 +61,7 @@ func (a *Agent) prepareResume(port int) error {
 func (a *Agent) writeResumeState(port int) error {
 	a.mu.Lock()
 	st := resumeState{Token: a.token, Port: port, AutoRestore: a.autoRestore, RestoreTried: a.restoreTried, NextID: a.nextID,
-		Jobs: a.jobs, FirstScan: a.firstScan, LastScan: a.lastScan, Started: a.started, SavedAt: time.Now()}
+		Jobs: a.jobs, FirstScan: a.firstScan, LastScan: a.lastScan, Started: a.started, SavedAt: time.Now(), Relay: a.relayConf}
 	b, err := json.Marshal(st)
 	a.mu.Unlock()
 	if err != nil {

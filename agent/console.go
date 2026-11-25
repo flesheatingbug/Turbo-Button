@@ -85,6 +85,8 @@ func (c *Console) Handle(e Event) {
 		fmt.Println(c.paint(cGreen, ts+"  ✔ "+e.Job.Title+summarize(e.Job)))
 	case "failed":
 		fmt.Println(c.paint(cRed, ts+"  ✖ "+e.Job.Title+" — "+clip(e.Text, 110)))
+	case "relay":
+		fmt.Println(c.paint(cYellow, ts+"  ⇄ "+e.Text))
 	case "queued":
 		if !e.Job.Auto && e.Job.Action != "scan" {
 			fmt.Println(c.paint(cDim, ts+"  + queued: "+e.Job.Title+paramText(e.Job.Params)))

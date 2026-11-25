@@ -72,6 +72,32 @@ jobs:
             TurboButton-linux-x86_64
             TurboButton-linux-arm64
 
+  relay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Vet and build
+        working-directory: relay
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=build-${{ github.run_number }}" -o ../turbo-relay-linux-x86_64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Version=build-${{ github.run_number }}" -o ../turbo-relay-linux-arm64 .
+      - name: Docker image builds and starts
+        working-directory: relay
+        run: |
+          docker build -q -t turbo-relay:ci --build-arg VERSION=ci .
+          mkdir -p /tmp/rcfg && sudo chown 1000:1000 /tmp/rcfg
+          docker run -d --name rl -u 1000:1000 -v /tmp/rcfg:/config -p 8099:8080 turbo-relay:ci
+          sleep 3; docker logs rl; curl -sf http://127.0.0.1:8099/healthz
+          curl -sf http://127.0.0.1:8099/ui/state | grep -q needsSetup
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turbo-relay
+          path: turbo-relay-linux-*
+
   android-app:
     runs-on: ubuntu-latest
     steps:
@@ -111,7 +137,7 @@ jobs:
           path: TurboButton.apk
 
   publish:
-    needs: [windows-agent, linux-agent, android-app]
+    needs: [windows-agent, linux-agent, relay, android-app]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -128,6 +154,6 @@ jobs:
         run: |
           (cd out && sha256sum TurboButton.exe TurboButton-x86_64.AppImage TurboButton-linux-x86_64 TurboButton-linux-arm64 TurboButton.apk > SHA256SUMS && cat SHA256SUMS)
           gh release delete latest -R "$REPO" --yes --cleanup-tag || true
-          gh release create latest out/TurboButton.exe out/TurboButton-x86_64.AppImage out/TurboButton-linux-x86_64 out/TurboButton-linux-arm64 out/TurboButton.apk out/SHA256SUMS -R "$REPO" --prerelease \
+          gh release create latest out/TurboButton.exe out/TurboButton-x86_64.AppImage out/TurboButton-linux-x86_64 out/TurboButton-linux-arm64 out/TurboButton.apk out/turbo-relay-linux-x86_64 out/turbo-relay-linux-arm64 out/SHA256SUMS -R "$REPO" --prerelease \
             --target "$GITHUB_SHA" --title "Latest build $(date -u '+%Y-%m-%d %H:%M') UTC" \
             --notes "Build ${GITHUB_RUN_NUMBER}, commit ${GITHUB_SHA::7}. Install TurboButton.apk on your phone; copy TurboButton.exe (Windows) and TurboButton-x86_64.AppImage (Linux) to a USB stick."

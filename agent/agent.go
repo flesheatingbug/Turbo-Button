@@ -33,7 +33,7 @@ var iconPNG []byte
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.9.15"
+const Version = "0.10.0"
 
 type Job struct {
 	ID       int             `json:"id"`
@@ -62,6 +62,8 @@ type Event struct {
 }
 
 type Agent struct {
+	relayConf    relayConf
+	relay        *relayClient
 	mu           sync.Mutex
 	token        string
 	jobs         []*Job
@@ -457,7 +459,7 @@ func (a *Agent) Handler() http.Handler {
 		host := hostName()
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		writeJSON(w, map[string]any{"agent": "Turbo Button", "version": Version, "computer": host, "catalog": activeCatalog(), "os": agentOS(), "build": Build,
+		writeJSON(w, map[string]any{"agent": "Turbo Button", "version": Version, "computer": host, "catalog": activeCatalog(), "os": agentOS(), "build": Build, "standby": a.relayConf.Standby, "relay": a.relayConf.URL, "relayStatus": a.relayStatus(),
 			"machineId": a.machineID, "resumed": a.resumed,
 			"autoRestorePoint": a.autoRestore, "restorePointDone": a.restoreTried, "startedAt": a.started,
 			"protectedServices": protectedServiceList(), "protectedAppPrefixes": protectedAppPrefixes})
@@ -563,4 +565,11 @@ func hostName() string {
 	}
 	h, _ := os.Hostname()
 	return h
+}
+
+func (a *Agent) relayStatus() string {
+	if a.relay == nil {
+		return ""
+	}
+	return a.relay.Status()
 }

@@ -53,6 +53,11 @@ func relaunchAsAdmin() error {
 		return err
 	}
 	os.Chmod(copyExe, 0755)
+	if c := confFile(); c != "" { // the admin copy runs from a temp folder: take the settings along
+		if copyFile(c, filepath.Join(dir, confName)) == nil {
+			os.Chmod(filepath.Join(dir, confName), 0600)
+		}
+	}
 	u, _ := user.Current()
 	args := []string{copyExe, "--gui-user=" + u.Username, "--gui-uid=" + u.Uid}
 	for _, k := range []string{"DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "XAUTHORITY", "XDG_SESSION_TYPE"} {

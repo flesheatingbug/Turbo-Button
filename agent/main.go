@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/signal"
 	"sort"
@@ -46,9 +47,21 @@ func main() {
 	a.machineID = machineID()
 	listenPort := port
 	var resumeErr error
+	a.relayConf = loadRelayConf()
+	if a.relayConf.Standby && a.relayConf.on() {
+		// Standby: same session key every run, so the phone that paired once can reconnect.
+		if t := loadStandbyToken(); t != "" {
+			a.token = t
+		} else {
+			saveStandbyToken(a.token)
+		}
+	}
 	if hasArg("--resume") {
 		var st *resumeState
 		if st, resumeErr = loadResume(); resumeErr == nil {
+			if !a.relayConf.on() && st.Relay.on() {
+				a.relayConf = st.Relay
+			}
 			a.restoreFrom(st)
 			if st.Port > 0 {
 				listenPort = st.Port
@@ -83,6 +96,9 @@ func main() {
 			return
 		}
 		fmt.Println("\n  > ENDING SESSION: removing firewall rule and temporary files...")
+		if a.relay != nil {
+			a.relay.Close()
+		}
 		closeScreen(a.workDir)
 		removeFirewallRule()
 		cancelResume()
@@ -97,14 +113,21 @@ func main() {
 	con := &Console{color: vt}
 	a.OnEvent = con.Handle
 
-	srv := &http.Server{Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	handler := a.Handler()
+	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	go srv.Serve(ln)
+	if a.relayConf.on() {
+		a.relay = a.startRelay(a.relayConf, handler)
+	}
 
 	ips := lanIPs()
 	if len(ips) == 0 {
 		ips = []string{"127.0.0.1"}
 	}
 	url := fmt.Sprintf("http://%s:%d/#t=%s", ips[0], p, a.token)
+	if a.relayConf.on() {
+		url += "&r=" + neturl.QueryEscape(a.relayConf.URL)
+	}
 	stopAwake := keepAwake()
 	defer stopAwake()
 	a.controlURL = url

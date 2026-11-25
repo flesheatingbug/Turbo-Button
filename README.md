@@ -35,6 +35,7 @@ A portable repair agent for computer technicians. Run it on the customer's PC fr
 - [AI options (free ones too)](#ai-options-free-ones-too)
 - [Safety](#safety)
 - [Handy extras](#handy-extras)
+- [Remote jobs and office PCs](#remote-jobs-and-office-pcs-your-own-relay)
 - [Building it yourself](#building-it-yourself)
 - [Troubleshooting](#troubleshooting)
 
@@ -295,6 +296,49 @@ The app checks the [Latest build](https://github.com/flesheatingbug/Turbo-Button
 
 ---
 
+## Remote jobs and office PCs (your own relay)
+
+On the same Wi-Fi the phone talks to the PC directly. For everything else (a customer you're helping over remote desktop, or PCs at your office) you can run your own **turbo-relay** server. No third-party service is involved.
+
+```mermaid
+flowchart LR
+    P["📱 Phone app"] -- "HTTPS" --> R["turbo-relay<br/>(your server, behind<br/>Nginx Proxy Manager)"]
+    A["🖥 TurboButton on the PC"] -- "connects out over HTTPS<br/>(no open ports at the PC)" --> R
+```
+
+- **End-to-end encrypted.** Requests and answers are sealed (AES-256-GCM) with a key that only the phone (from the PC's QR code) and the PC have. The relay just passes sealed boxes along: it can't read scans or send commands, even if the server were compromised.
+- **Locked down.** The relay's web page needs a password **and** a code from an authenticator app. Phones are paired from that page by QR code (and can be removed there). Only agents with your relay key can connect.
+- **Only while it runs.** A PC is reachable only while Turbo Button is open on it. Close it and it's gone.
+
+<img src="docs/media/relay-dashboard.png" width="460" alt="The relay's web page: connected PCs, paired phones and agent setup">
+
+### Set up the relay
+
+1. On your server, get the `relay` folder from this repo (`docker-compose.yml` and `.env.example`). Copy `.env.example` to `.env` and set `APPDATA`, `PORT`, `PUBLIC_URL`, `PUID`/`PGID`.
+2. `mkdir -p $APPDATA/turbo-relay && chown PUID:PGID $APPDATA/turbo-relay`, then `docker compose up -d --build`. It builds straight from GitHub.
+3. In **Nginx Proxy Manager**, add a proxy host for your domain (for example `turbo.example.com`) → the server's IP and `PORT`. Turn on **Websockets Support** and **Block Common Exploits**, and request an SSL certificate with **Force SSL**.
+4. Open `https://turbo.example.com`. Get the one-time setup code with `docker logs turbo-relay`, choose a password and scan the sign-in QR code with your authenticator app (Aegis, 2FAS, Google Authenticator, Bitwarden…).
+5. Tap **Pair a phone**. In the app go to **⚙ → Relay server → Pair with relay** and scan it.
+
+Not using Docker? The release also has `turbo-relay-linux-x86_64` / `-arm64`: run it with `CONFIG_DIR=/path LISTEN=:8085 PUBLIC_URL=https://…`.
+
+### Point the agents at it
+
+On the relay's page, **Agent setup** shows two lines. Save them as `turbobutton.conf` **next to TurboButton.exe / the AppImage** on your USB stick:
+
+```
+relay=https://turbo.example.com
+relaykey=…
+```
+
+The agent then connects to the relay as well as the local network, and its QR code includes the relay. Scan it as usual: the app uses Wi-Fi when it can and the relay when it can't (the PC list shows "via relay").
+
+- **Remote desktop jobs:** connect with your remote desktop tool, run Turbo Button on the customer's PC and scan the QR code off your own monitor. Everything else works as normal.
+- **Office PCs:** add `standby=yes` to their `turbobutton.conf`. Scan the QR code once; after that, whenever Turbo Button is running on that PC it shows under **Office PCs (relay)** on the PCs tab with a **Connect** button, from anywhere. Standby keeps one small file (`standby.json` in `C:\ProgramData\TurboButton` or `/var/lib/turbobutton`) so the pairing survives restarts. Delete it to unpair.
+- Options: `--relay URL`, `--relay-key KEY`, `--standby`, `--no-relay`.
+
+**Lost access?** Stop the container and delete `relay.json` in its config folder to start fresh. Phones and agents then need pairing and the new key again.
+
 ## Building it yourself
 
 Every push to `main` is built by GitHub Actions. The build vets and tests the code, runs a real Linux scan, then publishes the APK, EXE, AppImage and Linux binaries to the **Latest build** release.
@@ -338,6 +382,7 @@ agent/            Go agent: one file, no dependencies
   linux_*.go      the native Linux scan and fixes
 android/          the companion app (a WebView plus a small native bridge)
 packaging/linux/  AppImage launcher and desktop file
+relay/            turbo-relay server (Go, Docker): web page, phone pairing, encrypted forwarding
 docs/media/       README screenshots and clips
 ```
 

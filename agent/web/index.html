@@ -176,6 +176,7 @@
   <!-- PCs -->
   <section id="tab-setup">
     <div class="card" id="pcListCard"><h2>Your PCs</h2><div id="pcList"><div class="mut">No PCs connected yet.</div></div></div>
+    <div class="card" id="relayPCsCard" style="display:none"><h2>Office PCs (relay)</h2><div id="relayPCs" class="list"><div class="mut">Checking…</div></div></div>
     <div class="card" id="connectCard" style="display:none">
       <h2>Connect a PC</h2>
       <div class="mut">Run TurboButton.exe on the PC, then scan the QR code it shows. You can connect several PCs and work on them at the same time.</div>
@@ -225,6 +226,12 @@
       <label class="row"><input type="checkbox" id="autoRP" style="width:auto" checked> Create a restore point automatically before the first change</label>
       <div class="mut" id="sessionInfo"></div>
       <div class="mut" id="versionInfo" style="margin-top:4px"></div>
+    </div>
+    <div class="card" id="relayCard" style="display:none">
+      <h2>Relay server</h2>
+      <div id="relayState" class="mut"></div>
+      <div class="row" style="margin-top:8px"><button class="b2" id="relayPair">Pair with relay</button><button class="b2" id="relayUnpair">Unpair</button></div>
+      <div class="mut" style="margin-top:6px">Your own turbo-relay server lets the phone reach PCs that aren't on the same Wi-Fi: remote-desktop jobs and office PCs. To pair: sign in to the relay's web page, tap <b>Pair a phone</b>, then <b>Pair with relay</b> here and scan the code. Everything sent through it is end-to-end encrypted.</div>
     </div>
     <div class="card" id="notifyCard" style="display:none">
       <h2>Notifications</h2>
@@ -336,7 +343,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.9.15";
+const PAGE_VERSION = "0.10.0";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -359,22 +366,22 @@ window.__nr = (id, ok, payload) => { const p = pending[id]; if (!p) return; dele
 function nativeCall(method, ...args) { return new Promise((res, rej) => { const id = "r" + (++seq); pending[id] = { res, rej }; window.TurboNative[method](id, ...args); }); }
 
 class NetError extends Error {}
-async function http(method, url, headers, body) {
+async function http(method, url, headers, body, timeoutMs = 300000) {
   if (NATIVE) {
     let raw;
-    try { raw = await nativeCall("request", JSON.stringify({ method, url, headers: headers || {}, body: body ?? null, timeoutMs: 300000 })); }
+    try { raw = await nativeCall("request", JSON.stringify({ method, url, headers: headers || {}, body: body ?? null, timeoutMs })); }
     catch (e) { throw new NetError(e.message); }
     const r = JSON.parse(raw); return { status: r.status, text: r.body };
   }
   let r;
-  try { r = await fetch(url, { method, headers, body }); } catch (e) { throw new NetError(e.message); }
+  try { r = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(timeoutMs) }); } catch (e) { throw new NetError(e.message); }
   return { status: r.status, text: await r.text() };
 }
 
 function saveSessions() {
   if (!NATIVE) return;
   try {
-    localStorage.setItem("turbo.sessions", JSON.stringify(SESS.filter(x => !x.ended).map(x => ({ base: x.base, token: x.token, name: x.name }))));
+    localStorage.setItem("turbo.sessions", JSON.stringify(SESS.filter(x => !x.ended).map(x => ({ base: x.base, token: x.token, name: x.name, relay: x.relay }))));
     localStorage.setItem("turbo.active", S.id);
   } catch {}
 }
@@ -390,7 +397,7 @@ function loadSessions() {
     if (old && !list.some(x => x.token === old.token)) list.push(old);   // from v0.4
     localStorage.removeItem("turbo.session");
     for (const x of list) {
-      const sess = newSession(x.base, x.token); sess.name = x.name || "";
+      const sess = newSession(x.base, x.token); sess.name = x.name || ""; sess.relay = x.relay || "";
       try { Object.assign(sess, JSON.parse(localStorage.getItem("turbo.state." + sess.id) || "{}")); } catch {}
       SESS.push(sess);
     }
@@ -405,8 +412,105 @@ function loadSessions() {
   }
 }
 
+// ---------- relay: reach PCs that aren't on this network, through the technician's own server ----------
+// Everything sent through the relay is end-to-end encrypted with a key made from the PC's session token
+// (from its QR code). The relay only passes sealed messages along; it can't read or change them.
+function relayCfg() { try { return JSON.parse(localStorage.getItem("turbo.relay") || "null"); } catch { return null; } }
+const relayHost = (u) => { try { return new URL(u).host.toLowerCase(); } catch { return ""; } };
+const TE = new TextEncoder(), TD = new TextDecoder();
+const b64uEnc = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+const b64uDec = (s) => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)); const u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+async function relayKeys(sess) {
+  if (sess._rk && sess._rk.token === sess.token) return sess._rk;
+  const raw = await crypto.subtle.digest("SHA-256", TE.encode("turbo-button e2e v1|" + sess.token));
+  const key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+  const idh = new Uint8Array(await crypto.subtle.digest("SHA-256", TE.encode("turbo-button id v1|" + sess.token)));
+  const id = [...idh.slice(0, 16)].map(b => b.toString(16).padStart(2, "0")).join("");
+  return (sess._rk = { token: sess.token, key, id });
+}
+async function relayHttp(method, path, body, sess) {
+  const rc = relayCfg();
+  if (!rc) throw new NetError("not paired with a relay");
+  const { key, id } = await relayKeys(sess);
+  const msg = JSON.stringify({ m: method, p: path, h: { "X-Token": sess.token, "Content-Type": "application/json" }, b: body || "", ts: Date.now(), n: b64uEnc(crypto.getRandomValues(new Uint8Array(12))) });
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: TE.encode(id) }, key, TE.encode(msg)));
+  const packed = new Uint8Array(iv.length + ct.length); packed.set(iv); packed.set(ct, iv.length);
+  const r = await http("POST", rc.url + "/phone/send/" + id, { Authorization: "Bearer " + rc.token, "Content-Type": "application/json" }, JSON.stringify({ blob: b64uEnc(packed) }));
+  let j = {}; try { j = JSON.parse(r.text || "{}"); } catch {}
+  if (r.status === 401) throw new NetError("this phone isn't paired with the relay any more (⚙ → Relay server)");
+  if (r.status >= 400) throw new NetError(j.error || ("relay HTTP " + r.status));
+  const raw = b64uDec(j.blob || "");
+  let o;
+  try { o = JSON.parse(TD.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: raw.slice(0, 12), additionalData: TE.encode(id) }, key, raw.slice(12)))); }
+  catch { throw new NetError("the relay's answer couldn't be decrypted"); }
+  return { status: o.s, text: o.b };
+}
+// Wi-Fi first (fast); the relay when the PC can't be reached directly and it uses the relay this phone is paired with.
+async function pickRoute(sess) {
+  const rc = relayCfg();
+  const relayOK = NATIVE && rc && sess.relay && relayHost(sess.relay) === relayHost(rc.url);
+  if (!relayOK) return "lan";
+  if (sess.base) { try { const r = await http("GET", sess.base + "/api/info", { "X-Token": sess.token }, null, 2500); if (r.status < 500) return "lan"; } catch {} }
+  return "relay";
+}
+function rememberStandby(sess) {
+  if (!sess.info?.standby || !sess.relay) return;
+  relayKeys(sess).then(({ id }) => {
+    try { const m = JSON.parse(localStorage.getItem("turbo.standbyPCs") || "{}"); m[id] = { token: sess.token, base: sess.base, name: sess.name, relay: sess.relay }; localStorage.setItem("turbo.standbyPCs", JSON.stringify(m)); } catch {}
+  });
+}
+async function pairRelay(txt) {
+  let u, code;
+  try { u = new URL(String(txt).trim()); code = new URLSearchParams(u.hash.slice(1)).get("pair"); } catch {}
+  if (!code) { toast("That isn't a relay pairing code"); return; }
+  try {
+    const r = await http("POST", u.origin + "/phone/pair", { "Content-Type": "application/json" }, JSON.stringify({ code, name: "Turbo Button app" }));
+    let j = {}; try { j = JSON.parse(r.text || "{}"); } catch {}
+    if (r.status >= 400 || !j.token) throw new Error(j.error || ("HTTP " + r.status));
+    localStorage.setItem("turbo.relay", JSON.stringify({ url: (j.relay || u.origin).replace(/\/+$/, ""), token: j.token, paired: Date.now() }));
+    flash("RELAY PAIRED ✓", relayHost(j.relay || u.origin)); renderRelay(); refreshRelayPCs();
+  } catch (e) { toast("Pairing failed: " + e.message, 8000); }
+}
+function renderRelay() {
+  if (!$("relayCard")) return;
+  $("relayCard").style.display = NATIVE ? "" : "none";
+  const rc = relayCfg();
+  $("relayState").textContent = rc ? "Paired with " + relayHost(rc.url) : "Not paired. Set up turbo-relay on your server, then pair this phone from its web page.";
+  $("relayUnpair").style.display = rc ? "" : "none";
+  $("relayPCsCard").style.display = rc && NATIVE ? "" : "none";
+}
+let relayPCs = [];
+async function refreshRelayPCs() {
+  const rc = relayCfg(); if (!rc || !NATIVE) return;
+  try {
+    const r = await http("GET", rc.url + "/phone/pcs", { Authorization: "Bearer " + rc.token }, null, 8000);
+    if (r.status === 401) { $("relayPCs").innerHTML = '<div class="bad">This phone was removed from the relay. Pair it again under ⚙ → Relay server.</div>'; return; }
+    relayPCs = JSON.parse(r.text || "[]") || [];
+  } catch { $("relayPCs").innerHTML = '<div class="mut">Can\'t reach the relay right now.</div>'; return; }
+  let known = {}; try { known = JSON.parse(localStorage.getItem("turbo.standbyPCs") || "{}"); } catch {}
+  const standby = relayPCs.filter(p => p.mode === "standby");
+  $("relayPCs").innerHTML = standby.length ? standby.map(p => {
+    const k = known[p.id], open = k && SESS.find(x => x.token === k.token);
+    return `<div class="li"><div class="t"><b>${esc(p.name)}</b><div class="params">${esc(p.os)} · on since ${esc(new Date(p.since).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))}</div></div>` +
+      (open ? '<span class="mut">connected</span>' : k ? `<button class="b2 sm" data-rpc="${esc(p.id)}">Connect</button>` : '<span class="mut">scan its QR once to pair</span>') + "</div>";
+  }).join("") : '<div class="mut">No office PCs online. Run Turbo Button with standby=yes in turbobutton.conf and they show up here.</div>';
+  $("relayPCs").querySelectorAll("[data-rpc]").forEach(b => b.onclick = async () => {
+    const k = known[b.dataset.rpc]; if (!k) return;
+    let sess = SESS.find(x => x.token === k.token);
+    if (!sess) { sess = newSession(k.base || "", k.token); sess.relay = k.relay; sess.name = k.name; SESS.push(sess); }
+    switchTo(sess); show("scan"); clearTimeout(sess.timer); startSession(sess);
+  });
+}
+setInterval(() => { if (document.visibilityState === "visible" && $("tab-setup")?.classList.contains("on")) refreshRelayPCs(); }, 10000);
+
 async function api(path, opts = {}, sess = S) {
-  const r = await http(opts.method || "GET", sess.base + path, { "X-Token": sess.token, "Content-Type": "application/json" }, opts.body);
+  if (!sess.via) sess.via = await pickRoute(sess);
+  let r;
+  try {
+    r = sess.via === "relay" ? await relayHttp(opts.method || "GET", path, opts.body, sess)
+      : await http(opts.method || "GET", sess.base + path, { "X-Token": sess.token, "Content-Type": "application/json" }, opts.body);
+  } catch (e) { if (e instanceof NetError) sess.via = null; throw e; } // try both routes again next time
   let j = {}; try { j = JSON.parse(r.text || "{}"); } catch {}
   if (r.status >= 400) throw new Error(j.error || ("HTTP " + r.status));
   return j;
@@ -1840,7 +1944,7 @@ function renderPCs() {
   list.innerHTML = SESS.map((x, i) => {
     const [cls, txt] = pcStatus(x);
     return `<div class="li" style="${x === S ? "border-left:3px solid var(--acc);padding-left:8px" : ""}"><div class="t"><b>${esc(x.name || x.base || "This PC")}</b>${x === S ? ' <span class="mut">(showing)</span>' : ""}
-      <div style="font-size:13px;color:var(--${cls === "mut" ? "mut" : cls})">${esc(txt)}</div></div>
+      <div style="font-size:13px;color:var(--${cls === "mut" ? "mut" : cls})">${esc(txt)}${x.via === "relay" && x.status !== "lost" ? " · via relay" : ""}</div></div>
       ${x === S ? "" : `<button class="b2 sm" data-open="${i}">Open</button>`}
       ${x.status === "lost" ? `<button class="b2 sm" data-retry="${i}">Retry</button>` : ""}
       ${NATIVE ? `<button class="b2 sm" data-forget="${i}" title="Forget this PC on the phone">✕</button>` : ""}</div>`;
@@ -1901,28 +2005,37 @@ $("endBtn").onclick = async () => {
   }
 };
 $("nextPc").onclick = () => show("setup");
+$("relayPair").onclick = async () => { try { const t = await nativeCall("scanQR"); await pairRelay(t); } catch (e) { if (!/cancel/i.test(e.message)) toast("Scanner: " + e.message); } };
+$("relayUnpair").onclick = async () => {
+  if (!await ask({ title: "Unpair from the relay?", note: "PCs that aren't on the same Wi-Fi can't be reached until you pair again. Remove the phone on the relay's web page too.", ok: "Unpair" })) return;
+  localStorage.removeItem("turbo.relay"); SESS.forEach(x => x.via = null); renderRelay();
+};
 
 function parseConnect(txt) {
   let u; try { u = new URL(String(txt).trim()); } catch { throw new Error("That isn't a Turbo Button address"); }
   const t = (u.hash.match(/t=([0-9a-f]{32})/) || [])[1];
   if (!/^https?:$/.test(u.protocol) || !t) throw new Error("That isn't a Turbo Button address (missing #t=…)");
-  return { base: u.origin, token: t };
+  let relay = ""; try { relay = new URLSearchParams(u.hash.slice(1)).get("r") || ""; } catch {}
+  return { base: u.origin, token: t, relay };
 }
 async function connectTo(txt) {
   let c; try { c = parseConnect(txt); } catch (e) { toast(e.message); return; }
   let sess = SESS.find(x => x.token === c.token);
-  if (sess) { sess.base = c.base; switchTo(sess); if (sess.status === "lost") { clearTimeout(sess.timer); poll(sess); } show("scan"); return; }
+  if (sess) { sess.base = c.base; sess.relay = c.relay || sess.relay; sess.via = null; switchTo(sess); if (sess.status === "lost") { clearTimeout(sess.timer); poll(sess); } show("scan"); return; }
   // Same PC address with a new token = the agent was restarted: replace the old entry.
   for (const old of SESS.filter(x => x.base === c.base)) dropSession(old);
-  sess = newSession(c.base, c.token); SESS.push(sess); switchTo(sess);
+  sess = newSession(c.base, c.token); sess.relay = c.relay; SESS.push(sess); switchTo(sess);
+  const rc = relayCfg();
+  if (c.relay && !rc) toast("This PC also works through your relay. Pair the phone with it (⚙ → Relay server) to reach it from anywhere.", 8000);
+  else if (c.relay && rc && relayHost(c.relay) !== relayHost(rc.url)) toast("This PC uses a different relay (" + relayHost(c.relay) + ") from the one this phone is paired with.", 8000);
   $("connState").innerHTML = '<span class="spin"></span> Connecting…'; $("connUrl").value = "";
   const ok = await startSession(sess);
   $("connState").textContent = ok ? "" : "Couldn't reach that PC yet — same Wi-Fi? Is Turbo Button still running? It keeps retrying.";
 }
 if (NATIVE) {
   $("connectCard").style.display = "block"; $("rememberRow").style.display = "none";
-  $("qrBtn").onclick = async () => { try { await connectTo(await nativeCall("scanQR")); } catch (e) { if (!/cancel/i.test(e.message)) toast("Scanner: " + e.message); } };
-  $("connGo").onclick = () => connectTo($("connUrl").value);
+  $("qrBtn").onclick = async () => { try { const t = await nativeCall("scanQR"); if (/#pair=/.test(t)) await pairRelay(t); else await connectTo(t); } catch (e) { if (!/cancel/i.test(e.message)) toast("Scanner: " + e.message); } };
+  $("connGo").onclick = () => /#pair=/.test($("connUrl").value) ? pairRelay($("connUrl").value) : connectTo($("connUrl").value);
 } else $("nextPcRow").style.display = "none";
 
 async function startSession(sess) {
@@ -1931,6 +2044,8 @@ async function startSession(sess) {
     const info = await api("/api/info", {}, sess);
     const fresh = !sess.info;
     sess.info = info; sess.name = info.computer; sess.ended = false; sess.status = "ok";
+    if (info.relay && !sess.relay) sess.relay = info.relay;
+    rememberStandby(sess);
     if (fresh) await offerContinue(sess);
     const sc = await api("/api/scan", {}, sess); sess.scan = fixScan(sc.latest); sess.firstScan = fixScan(sess.keepFirst || sc.first);
     sess.jobs = (await api("/api/jobs", {}, sess)) || [];
@@ -1951,6 +2066,7 @@ async function startSession(sess) {
 }
 
 (async function init() {
+  setTimeout(() => { renderRelay(); refreshRelayPCs(); }, 0);
   $("versionInfo").textContent = (NATIVE ? "Turbo Button app " : "Turbo Button control page ") + PAGE_VERSION;
   if (NATIVE && TurboNative.notify) {
     $("notifyCard").style.display = ""; $("notifyOn").checked = notifyOn();
