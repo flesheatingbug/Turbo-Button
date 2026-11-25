@@ -33,7 +33,7 @@ var iconPNG []byte
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.10.9"
+const Version = "0.10.10"
 
 type Job struct {
 	ID        int             `json:"id"`
@@ -48,7 +48,9 @@ type Job struct {
 	Output    string          `json:"output"`
 	Result    json.RawMessage `json:"result,omitempty"`
 	Error     string          `json:"error,omitempty"`
-	Auto      bool            `json:"auto,omitempty"` // queued by the agent itself
+	Auto      bool            `json:"auto,omitempty"`   // queued by the agent itself
+	Held      bool            `json:"held,omitempty"`   // queued while the queue is paused
+	Forced    bool            `json:"forced,omitempty"` // a system-changing job stopped halfway on purpose
 	env       map[string]string
 	Stoppable bool               `json:"stoppable,omitempty"`
 	stop      context.CancelFunc // stops it while it runs (read-only jobs only)
@@ -72,6 +74,7 @@ type Agent struct {
 	jobs         []*Job
 	nextID       int
 	queue        chan *Job
+	paused       bool // the technician paused the queue: the running job finishes, the next waits
 	workDir      string
 	lastScan     json.RawMessage
 	firstScan    json.RawMessage
@@ -181,7 +184,7 @@ func (a *Agent) enqueue(actionID string, params map[string]any, reason string, a
 	}
 	a.nextID++
 	j := &Job{ID: a.nextID, Action: actionID, Title: title, Params: params, Reason: reason, Status: "queued",
-		Queued: time.Now(), env: env, modifies: modifies, Auto: auto, timeout: timeout}
+		Queued: time.Now(), env: env, modifies: modifies, Auto: auto, timeout: timeout, Held: a.paused}
 	a.jobs = append(a.jobs, j)
 	a.queue <- j
 	go a.emit(Event{Kind: "queued", Job: j})
@@ -195,6 +198,20 @@ func (a *Agent) worker() {
 		case <-a.ctx.Done():
 			return
 		case j = <-a.queue:
+		}
+		// Paused: wait here (the job stays "queued") until resumed or cancelled.
+		for {
+			a.mu.Lock()
+			p, c := a.paused, j.Status == "cancelled"
+			a.mu.Unlock()
+			if !p || c {
+				break
+			}
+			select {
+			case <-a.ctx.Done():
+				return
+			case <-time.After(300 * time.Millisecond):
+			}
 		}
 		a.mu.Lock()
 		cancelled := j.Status == "cancelled"
@@ -276,6 +293,9 @@ func (a *Agent) run(j *Job) {
 	j.stop = nil
 	if j.stopped {
 		j.Status, j.Error = "cancelled", "Stopped by the technician"
+		if j.Forced {
+			j.Error = "Force-stopped by the technician while it was changing the system — check it finished cleanly (rescan, or run it again)"
+		}
 		a.mu.Unlock()
 		a.emit(Event{Kind: "failed", Job: j, Text: "stopped by the technician"})
 		return
@@ -692,17 +712,56 @@ func (a *Agent) Handler() http.Handler {
 				j.Status = "cancelled"
 				writeJSON(w, j)
 				return
-			case j.Status == "running" && j.stoppable() && j.stop != nil:
-				j.stopped = true
+			case j.Status == "running" && j.stop != nil && (j.stoppable() || r.URL.Query().Get("force") == "1"):
+				j.stopped, j.Forced = true, !j.stoppable()
 				j.stop()
 				writeJSON(w, j)
 				return
 			case j.Status == "running":
-				writeErr(w, 400, "this one changes the system, so it can't be stopped halfway safely — let it finish")
+				writeErr(w, 409, "this one changes the system, so stopping it halfway could leave things half-done — force-stop it only if it's stuck")
 				return
 			}
 		}
 		writeErr(w, 400, "that job has already finished")
+	}))
+	// Cancel everything waiting, and stop running checks. A running job that changes the system
+	// is left to finish (force-stop it on its own if it's stuck).
+	mux.HandleFunc("POST /api/jobs/cancel-all", a.authed(func(w http.ResponseWriter, r *http.Request) {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		cancelled, stopped, left := 0, 0, []string{}
+		for _, j := range a.jobs {
+			switch {
+			case j.Status == "queued":
+				j.Status, j.Held = "cancelled", false
+				cancelled++
+			case j.Status == "running" && j.stop != nil && j.stoppable():
+				j.stopped = true
+				j.stop()
+				stopped++
+			case j.Status == "running":
+				left = append(left, j.Title)
+			}
+		}
+		writeJSON(w, map[string]any{"cancelled": cancelled, "stopped": stopped, "stillRunning": left})
+	}))
+	mux.HandleFunc("POST /api/queue/pause", a.authed(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Paused bool `json:"paused"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&in); err != nil {
+			writeErr(w, 400, "bad request")
+			return
+		}
+		a.mu.Lock()
+		a.paused = in.Paused
+		for _, j := range a.jobs {
+			if j.Status == "queued" {
+				j.Held = in.Paused
+			}
+		}
+		a.mu.Unlock()
+		writeJSON(w, map[string]any{"paused": in.Paused})
 	}))
 	mux.HandleFunc("GET /api/jobs", a.authed(func(w http.ResponseWriter, r *http.Request) {
 		a.mu.Lock()

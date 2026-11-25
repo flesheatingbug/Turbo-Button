@@ -343,7 +343,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.10.9";
+const PAGE_VERSION = "0.10.10";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -1687,14 +1687,38 @@ function renderJobs() {
   $("freedTotal").textContent = total ? "Freed so far: " + fmtBytes(total) : "";
   const earlier = (S.prevJobs || []).filter(j => j.status === "done" || j.status === "failed");
   const earlierHTML = earlier.length ? `<details style="margin-top:8px"><summary>Earlier in this job (${earlier.length})</summary>` + earlier.map(j => `<div class="job"><span class="st ${j.status}">${esc(j.status.toUpperCase())}</span> <b>${esc(j.title)}</b> <span class="params">${esc(Object.values(j.params || {}).join(", "))}</span>${j.status === "done" && resultLine(j) ? `<div style="color:var(--ok);font-size:13px">${esc(resultLine(j))}</div>` : ""}</div>`).join("") + `</details>` : "";
-  if (!S.jobs.length) { $("jobsView").innerHTML = '<div class="mut">No jobs yet.</div>' + earlierHTML; return; }
-  $("jobsView").innerHTML = S.jobs.slice().reverse().map(j => `<div class="job"><div class="row"><span class="st ${j.status}">${j.status === "running" ? '<span class="spin"></span> ' : ""}${esc(j.status.toUpperCase())}</span>
-    <b class="grow">${esc(j.title)}</b><span class="mut">${since(j.started, j.finished)}</span>${j.status === "queued" ? `<button class="b2 sm" data-cancel="${j.id}">Cancel</button>` : j.status === "running" && j.stoppable ? `<button class="b2 sm" data-stop="${j.id}" title="Stop this check now">Stop</button>` : ""}</div>
+  const setHTML = html => { if ($("jobsView")._html !== html) { $("jobsView")._html = html; $("jobsView").innerHTML = html; return true; } return false; };
+  if (!S.jobs.length) { setHTML('<div class="mut">No jobs yet.</div>' + earlierHTML); return; }
+  S.openDet = S.openDet || new Set();
+  const waiting = S.jobs.filter(j => j.status === "queued"), running = S.jobs.filter(j => j.status === "running");
+  const paused = S.paused != null ? S.paused : waiting.some(j => j.held);
+  const bar = waiting.length || running.length || paused ? `<div class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap"><span class="mut grow">${paused ? "⏸ Paused — the running job finishes, the rest wait" : `${running.length} running · ${waiting.length} waiting`}</span>
+    <button class="b2 sm" id="pauseAll">${paused ? "Resume" : "Pause all"}</button>${waiting.length || running.some(j => j.stoppable) ? '<button class="b2 sm" id="cancelAll">Cancel all</button>' : ""}</div>` : "";
+  const changed = setHTML(bar + S.jobs.slice().reverse().map(j => `<div class="job"><div class="row"><span class="st ${j.status}">${j.status === "running" ? '<span class="spin"></span> ' : ""}${esc(j.status === "queued" && (j.held || paused) ? "PAUSED" : j.status.toUpperCase())}</span>
+    <b class="grow">${esc(j.title)}</b><span class="mut">${since(j.started, j.finished)}</span>${j.status === "queued" ? `<button class="b2 sm" data-cancel="${j.id}">Cancel</button>` : j.status === "running" && j.stoppable ? `<button class="b2 sm" data-stop="${j.id}" title="Stop this check now">Stop</button>` : j.status === "running" ? `<button class="b2 sm" data-force="${j.id}" title="It's changing the system: only if it's stuck">Force stop</button>` : ""}</div>
     ${Object.keys(j.params || {}).length ? `<div class="params">${esc(JSON.stringify(j.params))}</div>` : ""}
     ${j.auto ? '<div class="mut">Added automatically</div>' : ""}
     ${j.status === "done" ? `<div style="color:var(--ok);font-size:13px">${esc(resultLine(j))}</div>` : ""}
     ${j.error ? `<div style="color:var(--bad);font-size:13px">${esc(j.error)}</div>` : ""}
-    ${(j.output || j.result) && (j.action !== "scan" || j.status === "failed") ? `<details${j.action === "scan" ? " open" : ""}><summary>Details</summary><pre>${esc((j.output || "") + (j.result ? "\n" + JSON.stringify(j.result, null, 1) : ""))}</pre></details>` : ""}</div>`).join("") + earlierHTML;
+    ${(j.output || j.result) && (j.action !== "scan" || j.status === "failed") ? `<details data-jid="${j.id}"${S.openDet.has(j.id) || (j.action === "scan" && !S.openDet.has(-j.id)) ? " open" : ""}><summary>Details</summary><pre>${esc((j.output || "") + (j.result ? "\n" + JSON.stringify(j.result, null, 1) : ""))}</pre></details>` : ""}</div>`).join("") + earlierHTML);
+  if (!changed) return; // nothing new: leave the page alone so open Details and scrolling stay put
+  $("jobsView").querySelectorAll("details[data-jid]").forEach(d => d.ontoggle = () => {
+    const id = +d.dataset.jid;
+    if (d.open) { S.openDet.add(id); S.openDet.delete(-id); } else { S.openDet.delete(id); S.openDet.add(-id); }
+  });
+  $("jobsView").querySelectorAll("[data-force]").forEach(b => b.onclick = async () => {
+    const j = S.jobs.find(x => x.id === +b.dataset.force);
+    if (!await ask({ title: "Force-stop this job?", facts: [j ? j.title : "", "It's changing the system right now", "Stopping halfway can leave it half-done (an update half-installed, a program half-removed)", "The restore point made at the start can undo it"], note: "Only do this if it's clearly stuck.", ok: "Force stop", danger: true })) return;
+    b.disabled = true; b.textContent = "Stopping…";
+    try { await api(`/api/jobs/${b.dataset.force}/cancel?force=1`, { method: "POST" }); toast("Force-stopped — rescan to check the PC"); pollSoon(); } catch (e) { toast(e.message); b.disabled = false; b.textContent = "Force stop"; }
+  });
+  if ($("pauseAll")) $("pauseAll").onclick = async () => {
+    try { const r = await api("/api/queue/pause", { method: "POST", body: JSON.stringify({ paused: !paused }) }); S.paused = r.paused; toast(r.paused ? "Paused — the running job finishes first" : "Resumed"); renderJobs(); pollSoon(); } catch (e) { toast(e.message); }
+  };
+  if ($("cancelAll")) $("cancelAll").onclick = async () => {
+    if (!await ask({ title: "Cancel all jobs?", facts: [`${waiting.length} waiting job(s) will be cancelled`, running.some(j => j.stoppable) ? "Running checks are stopped" : null, running.some(j => !j.stoppable) ? "A job that's changing the system is left to finish" : null].filter(Boolean), ok: "Cancel all", danger: true })) return;
+    try { const r = await api("/api/jobs/cancel-all", { method: "POST" }); toast(`${r.cancelled} cancelled${r.stopped ? ", " + r.stopped + " stopped" : ""}${(r.stillRunning || []).length ? " · still finishing: " + r.stillRunning.join(", ") : ""}`, 5000); pollSoon(); } catch (e) { toast(e.message); }
+  };
   $("jobsView").querySelectorAll("[data-cancel]").forEach(b => b.onclick = async () => { try { await api(`/api/jobs/${b.dataset.cancel}/cancel`, { method: "POST" }); pollSoon(); } catch (e) { toast(e.message); } });
   $("jobsView").querySelectorAll("[data-stop]").forEach(b => b.onclick = async () => {
     b.disabled = true; b.textContent = "Stopping…";
