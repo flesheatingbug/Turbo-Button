@@ -33,25 +33,28 @@ var iconPNG []byte
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.10.1"
+const Version = "0.10.2"
 
 type Job struct {
-	ID       int             `json:"id"`
-	Action   string          `json:"action"`
-	Title    string          `json:"title"`
-	Params   map[string]any  `json:"params"`
-	Reason   string          `json:"reason,omitempty"`
-	Status   string          `json:"status"` // queued running done failed cancelled
-	Queued   time.Time       `json:"queued"`
-	Started  *time.Time      `json:"started,omitempty"`
-	Finished *time.Time      `json:"finished,omitempty"`
-	Output   string          `json:"output"`
-	Result   json.RawMessage `json:"result,omitempty"`
-	Error    string          `json:"error,omitempty"`
-	Auto     bool            `json:"auto,omitempty"` // queued by the agent itself
-	env      map[string]string
-	modifies bool
-	timeout  time.Duration
+	ID        int             `json:"id"`
+	Action    string          `json:"action"`
+	Title     string          `json:"title"`
+	Params    map[string]any  `json:"params"`
+	Reason    string          `json:"reason,omitempty"`
+	Status    string          `json:"status"` // queued running done failed cancelled
+	Queued    time.Time       `json:"queued"`
+	Started   *time.Time      `json:"started,omitempty"`
+	Finished  *time.Time      `json:"finished,omitempty"`
+	Output    string          `json:"output"`
+	Result    json.RawMessage `json:"result,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	Auto      bool            `json:"auto,omitempty"` // queued by the agent itself
+	env       map[string]string
+	Stoppable bool               `json:"stoppable,omitempty"`
+	stop      context.CancelFunc // stops it while it runs (read-only jobs only)
+	stopped   bool
+	modifies  bool
+	timeout   time.Duration
 }
 
 // Event is what the console log (and anything else) sees as jobs progress.
@@ -237,15 +240,25 @@ func (a *Agent) worker() {
 	}
 }
 
+// stoppable: read-only jobs can be stopped halfway. Anything that changes the system can't:
+// killing an update, uninstall or repair halfway could leave the PC broken.
+func (j *Job) stoppable() bool {
+	return !j.modifies && j.Action != "restore_point" && j.Action != "restart_pc" && j.Action != "cancel_restart"
+}
+
 func (a *Agent) run(j *Job) {
 	now := time.Now()
+	jctx, stop := context.WithCancel(a.ctx)
+	defer stop()
 	a.mu.Lock()
 	j.Status, j.Started = "running", &now
+	j.stop = stop
+	j.Stoppable = j.stoppable()
 	a.mu.Unlock()
 	a.emit(Event{Kind: "start", Job: j})
 
 	name := j.Action
-	res, err := a.runScript(name, j.env, j.timeout, func(line string) {
+	res, err := a.runScript(jctx, name, j.env, j.timeout, func(line string) {
 		a.mu.Lock()
 		j.Output += line + "\n"
 		if len(j.Output) > 12000 {
@@ -257,6 +270,13 @@ func (a *Agent) run(j *Job) {
 	end := time.Now()
 	a.mu.Lock()
 	j.Finished = &end
+	j.stop = nil
+	if j.stopped {
+		j.Status, j.Error = "cancelled", "Stopped by the technician"
+		a.mu.Unlock()
+		a.emit(Event{Kind: "failed", Job: j, Text: "stopped by the technician"})
+		return
+	}
 	if err != nil {
 		j.Status, j.Error = "failed", err.Error()
 		armed := a.resumeArmed
@@ -286,9 +306,9 @@ func (a *Agent) run(j *Job) {
 // nativeRun handles scans and actions without PowerShell (set by the Linux build).
 var nativeRun func(ctx context.Context, name string, env map[string]string, onLine func(string)) (json.RawMessage, error)
 
-func (a *Agent) runScript(name string, env map[string]string, timeout time.Duration, onLine func(string)) (json.RawMessage, error) {
+func (a *Agent) runScript(parent context.Context, name string, env map[string]string, timeout time.Duration, onLine func(string)) (json.RawMessage, error) {
 	if nativeRun != nil && !mockMode() {
-		ctx, cancel := context.WithTimeout(a.ctx, timeout)
+		ctx, cancel := context.WithTimeout(parent, timeout)
 		defer cancel()
 		res, err := nativeRun(ctx, name, env, onLine)
 		if ctx.Err() == context.DeadlineExceeded {
@@ -302,7 +322,7 @@ func (a *Agent) runScript(name string, env map[string]string, timeout time.Durat
 		return nil, fmt.Errorf("no script for %s", name)
 	}
 	if mockMode() {
-		return mockRun(name, env, onLine)
+		return mockRun(parent, name, env, onLine)
 	}
 	path := filepath.Join(a.workDir, fmt.Sprintf("%s-%d.ps1", name, time.Now().UnixNano()))
 	// UTF-8 with BOM so Windows PowerShell 5.1 reads it as UTF-8.
@@ -314,7 +334,7 @@ func (a *Agent) runScript(name string, env map[string]string, timeout time.Durat
 	}
 	defer os.Remove(path)
 
-	ctx, cancel := context.WithTimeout(a.ctx, timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, powershellPath(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path)
 	cmd.Env = os.Environ()
@@ -322,6 +342,9 @@ func (a *Agent) runScript(name string, env map[string]string, timeout time.Durat
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
 	hideWindow(cmd)
+	// Stopping must end the whole tree (sfc, DISM, MpCmdRun… started by the script), not just PowerShell.
+	cmd.Cancel = func() error { return killTree(cmd) }
+	cmd.WaitDelay = 10 * time.Second
 	stdout, _ := cmd.StdoutPipe()
 	cmd.Stderr = cmd.Stdout
 	if err := cmd.Start(); err != nil {
@@ -516,13 +539,25 @@ func (a *Agent) Handler() http.Handler {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		for _, j := range a.jobs {
-			if fmt.Sprint(j.ID) == id && j.Status == "queued" {
+			if fmt.Sprint(j.ID) != id {
+				continue
+			}
+			switch {
+			case j.Status == "queued":
 				j.Status = "cancelled"
 				writeJSON(w, j)
 				return
+			case j.Status == "running" && j.stoppable() && j.stop != nil:
+				j.stopped = true
+				j.stop()
+				writeJSON(w, j)
+				return
+			case j.Status == "running":
+				writeErr(w, 400, "this one changes the system, so it can't be stopped halfway safely — let it finish")
+				return
 			}
 		}
-		writeErr(w, 400, "only queued jobs can be cancelled")
+		writeErr(w, 400, "that job has already finished")
 	}))
 	mux.HandleFunc("GET /api/jobs", a.authed(func(w http.ResponseWriter, r *http.Request) {
 		a.mu.Lock()

@@ -394,3 +394,11 @@ func readKV(path string) map[string]string {
 	}
 	return m
 }
+
+// killTree asks the process to stop (package managers clean up their locks on SIGTERM).
+func killTree(cmd *exec.Cmd) error {
+	if cmd.Process == nil {
+		return nil
+	}
+	return cmd.Process.Signal(syscall.SIGTERM)
+}

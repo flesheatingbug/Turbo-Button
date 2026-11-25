@@ -5,6 +5,7 @@ package main
 // Fake results so the agent and the phone UI can be exercised without a real PC (TURBO_MOCK=1).
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,13 +16,17 @@ var mockScans int
 
 func mockMode() bool { return os.Getenv("TURBO_MOCK") == "1" }
 
-func mockRun(name string, env map[string]string, onLine func(string)) (json.RawMessage, error) {
+func mockRun(ctx context.Context, name string, env map[string]string, onLine func(string)) (json.RawMessage, error) {
 	onLine("Starting " + name + "...")
 	time.Sleep(300 * time.Millisecond)
 	// TURBO_MOCK_DELAY=ms makes each simulated job take a while (for demos and screen recordings).
 	if d, _ := time.ParseDuration(os.Getenv("TURBO_MOCK_DELAY") + "ms"); d > 0 && name != "scan" {
 		for i := 1; i <= 4; i++ {
-			time.Sleep(d / 4)
+			select {
+			case <-time.After(d / 4):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 			onLine(fmt.Sprintf("Working... step %d of 4", i))
 		}
 	}

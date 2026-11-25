@@ -99,6 +99,8 @@ func stream(ctx context.Context, onLine func(string), env []string, name string,
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = append(append(os.Environ(), "LC_ALL=C", "LANG=C"), env...)
+	cmd.Cancel = func() error { return killTree(cmd) }
+	cmd.WaitDelay = 15 * time.Second
 	pr, pw, _ := os.Pipe()
 	cmd.Stdout, cmd.Stderr = pw, pw
 	if err := cmd.Start(); err != nil {

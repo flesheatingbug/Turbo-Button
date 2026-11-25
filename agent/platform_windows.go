@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -85,8 +86,23 @@ func addFirewallRule(port int) {
 
 func removeFirewallRule() { netsh("advfirewall", "firewall", "delete", "rule", "name="+fwRule) }
 
-func mockMode() bool                                                  { return false }
-func mockRun(string, map[string]string, func(string)) ([]byte, error) { return nil, nil }
+func mockMode() bool { return false }
+func mockRun(context.Context, string, map[string]string, func(string)) ([]byte, error) {
+	return nil, nil
+}
+
+// killTree ends a process and everything it started.
+func killTree(cmd *exec.Cmd) error {
+	if cmd.Process == nil {
+		return nil
+	}
+	k := exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid))
+	hideWindow(k)
+	if err := k.Run(); err != nil {
+		return cmd.Process.Kill()
+	}
+	return nil
+}
 
 // keepAwake stops Windows sleeping, and the screen turning off or locking, while the agent runs,
 // so long jobs finish and the customer screen stays visible. Back to normal when the session ends.

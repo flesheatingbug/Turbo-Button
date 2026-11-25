@@ -41,3 +41,10 @@ func closeScreen(string)                   {}
 func hideConsole() bool                    { return false }
 func desktopAlert(msg string)              {}
 func showConsole()                         {}
+
+func killTree(cmd *exec.Cmd) error {
+	if cmd.Process == nil {
+		return nil
+	}
+	return cmd.Process.Kill()
+}

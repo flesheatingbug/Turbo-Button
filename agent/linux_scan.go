@@ -158,6 +158,9 @@ func short(s string, n int) string {
 func linuxScan(ctx context.Context, onLine func(string)) map[string]any {
 	r := map[string]any{"scannedAt": time.Now().Format("2006-01-02T15:04:05"), "errors": []string{}}
 	section := func(name string, f func() any) {
+		if ctx.Err() != nil {
+			return
+		}
 		onLine("Scanning: " + name)
 		defer func() {
 			if e := recover(); e != nil {
