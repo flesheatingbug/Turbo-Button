@@ -343,7 +343,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.10.7";
+const PAGE_VERSION = "0.10.8";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -979,8 +979,8 @@ Rules:
 - Blue screens: interpret bugcheck codes (driver vs RAM vs disk vs GPU vs hardware) in findings; propose schedule_memory_test for RAM-type codes and schedule_chkdsk for disk-type codes.
 - Defender scan ages of "never" mean no scan was ever recorded. A hosts file with hundreds of entries is usually a deliberate block list: mention it, don't propose reset_hosts unless it blocks security/update sites.
 - Slow boot: name the worst offenders from bootPerformance.slowdowns.
-- If DEEP CHECK RESULTS are given, use them: corruption from sfc_verify/dism_check → dism_restore then sfc; chkdsk problems → schedule_chkdsk; Defender detections → critical finding (and defender_offline_scan if serious); available updates → windows_update / app_updates install; disk_usage → say what fills the disk. Don't re-propose the read-only checks themselves.
-- Any action that needs a restart (windows_update install, network_reset, schedule_*) means proposing restart_pc {minutes:"1"} as the VERY LAST proposal with askCustomer true. Never propose defender_offline_scan unless malware is strongly suspected (it restarts immediately).
+- If DEEP CHECK RESULTS are given, use them: corruption from sfc_verify/dism_check → dism_restore then sfc; chkdsk problems → schedule_chkdsk; Defender detections → critical finding, defender_remove (and defender_offline_scan if serious); available updates → windows_update / app_updates install; disk_usage → say what fills the disk. Don't re-propose the read-only checks themselves.
+- Any action that needs a restart (windows_update install, network_reset, schedule_*) means proposing restart_pc {minutes:"1"} as the VERY LAST proposal with askCustomer true. When security.recentThreats has entries with active:true (and status not "allowed"), propose defender_remove; entries with active:false were already quarantined/removed by Defender, so report them as past detections, not current infections. Never propose defender_offline_scan unless malware is strongly suspected (it restarts immediately).
 - Things the agent cannot do (uninstalling desktop programs, driver updates, BIOS, hardware) go in "manual".
 Reply with JSON only, no prose, in this shape:
 {"summary":"2-4 sentences for the technician","health":"good|fair|poor","findings":[{"severity":"info|warn|critical","title":"","detail":""}],"proposals":[{"action":"id","params":{},"reason":"why","risk":"low|medium|high","askCustomer":false}],"manual":[{"title":"","detail":""}]}`;
@@ -1228,13 +1228,21 @@ function quickPlanWin(s) {
   const others = (sec.antivirusProducts || []).filter(n => !/defender/i.test(n));
   if (sec.realTime === false && !others.length) find("critical", "No active antivirus", "Microsoft Defender real-time protection is off and no other antivirus was found.");
   if (others.length) find("info", "Third-party antivirus", others.join(", ") + (others.length > 1 ? " — more than one antivirus installed; keep only one." : ""));
-  if ((sec.recentThreats || []).length) find("critical", "Malware detections found", (sec.recentThreats || []).map(t => t.name || t.threatId).join(", "));
+  const thr = sec.recentThreats || [], thrName = t => (t.name || t.threatId) + (t.status ? ` (${t.status})` : "");
+  const thrActive = thr.filter(t => t.active && t.status !== "allowed"), thrAllowed = thr.filter(t => t.status === "allowed"), thrDone = thr.filter(t => !t.active && t.status !== "allowed");
+  if (thrActive.length) {
+    find("critical", "Malware still on the PC", thrActive.map(thrName).join(", "));
+    prop("defender_remove", {}, `Defender found ${thrActive.length} threat(s) that are still on the PC: remove them.`, "medium", thrActive.some(t => /AutoKMS|KMS|crack|keygen/i.test(t.name || "")));
+  }
+  if (thrAllowed.length) find("warn", "Threats allowed in Windows Security", thrAllowed.map(thrName).join(", ") + " — someone chose to keep these. Check with the customer.");
+  if (thrDone.length) find(thrActive.length ? "info" : "warn", "Past malware detections (already dealt with by Defender)", thrDone.map(thrName).join(", "));
   const sigAgeDays = sec.signaturesUpdated ? (Date.now() - new Date(sec.signaturesUpdated)) / 864e5 : 99;
   if (sec.defenderEnabled !== false && !others.length) {
     if (sigAgeDays > 2) prop("defender_update", {}, "Malware definitions are out of date.");
     const qAge = typeof sec.quickScanAgeDays === "number" && sec.quickScanAgeDays < 100000 ? sec.quickScanAgeDays : 99;
     if (qAge > 7 || (sec.recentThreats || []).length) prop("defender_scan", { type: "quick" }, "No recent malware scan.");
   }
+  if (thr.some(t => /AutoKMS|KMSAuto|HackTool:.*KMS/i.test(t.name || ""))) M.push({ title: "Unlicensed activation tool", detail: "Defender found a KMS activator (used to activate Windows or Office without a licence). Removing it can make Windows/Office ask for activation — talk to the customer about a genuine licence." });
   if (sec.uacEnabled === 0) find("critical", "UAC is turned off", "User Account Control is disabled. Turn it back on in Control Panel → User Accounts.");
 
   // Hardware / health
@@ -1326,6 +1334,8 @@ function quickPlanWin(s) {
     P.splice(0, P.length, ...P.filter(p => p.action !== "windows_update"));
     prop("windows_update", { mode: "install", drivers: drv || (s.problemDevices || []).length > 0 }, `${wu.found} update(s) found by the deep check.`);
   } else if (wu && wu.found === 0) P.splice(0, P.length, ...P.filter(p => p.action !== "windows_update" && p.action !== "reset_windows_update"));
+  const dsc = dr("defender_scan");
+  if (dsc && (dsc.detections || []).length && !P.some(p => p.action === "defender_remove")) prop("defender_remove", {}, `The Defender scan found ${dsc.detections.length} threat(s): remove whatever it hasn't quarantined.`, "medium");
   const du2 = dr("driver_updates");
   if (du2 && du2.found > 0 && !P.some(p => p.action === "driver_updates")) prop("driver_updates", { mode: "install", oemtool: true }, `${du2.found} newer driver(s) found by the deep check.`);
   const fu = dr("feature_update");
@@ -1356,7 +1366,7 @@ function quickPlanWin(s) {
 
   // Order: quick cleanups → startup/apps → settings → security → disk → long repairs → restart last
   const order = ["disk_usage", "cleanup", "component_cleanup", "program_uninstall", "av_remove", "office_remove", "startup_disable", "app_remove", "remove_browser_policies", "reset_proxy", "reset_dns", "reset_hosts",
-    "fast_startup", "privacy", "defender_update", "defender_scan", "chkdsk_scan", "optimize_drive", "reset_windows_update", "dism_restore", "sfc", "app_updates", "windows_update", "driver_updates", "feature_update", "schedule_memory_test", "schedule_chkdsk", "defender_offline_scan", "restart_pc"];
+    "fast_startup", "privacy", "defender_update", "defender_scan", "defender_remove", "chkdsk_scan", "optimize_drive", "reset_windows_update", "dism_restore", "sfc", "app_updates", "windows_update", "driver_updates", "feature_update", "schedule_memory_test", "schedule_chkdsk", "defender_offline_scan", "restart_pc"];
   P.sort((a, b) => order.indexOf(a.action) - order.indexOf(b.action));
   const crit = F.filter(f => f.severity === "critical").length, warn = F.filter(f => f.severity === "warn").length;
   const health = crit ? "poor" : warn >= 2 ? "fair" : "good";
@@ -1653,6 +1663,7 @@ function resultLine(j) {
   if (r.detections) bits.push(r.detections.length + " detection(s)");
   if (r.problemsFound != null) bits.push(r.problemsFound ? "problems found" : "no problems");
   if (j.action === "windows_update") bits.push(r.mode === "install" ? `${r.installed || 0} installed${r.failed ? ", " + r.failed + " failed" : ""}` : `${r.found || 0} update(s) available`);
+  if (j.action === "defender_remove") bits.push(`${r.removed || 0} removed` + ((r.stillActive || []).length ? ` · ${r.stillActive.length} still present` : "") + ((r.allowed || []).length ? ` · ${r.allowed.length} allowed, left alone` : ""));
   if (j.action === "driver_updates") bits.push((r.mode === "install" ? `${r.installed || 0} driver(s) installed${r.failed ? ", " + r.failed + " failed" : ""}` : `${r.found || 0} newer driver(s)`) + (r.oem ? ` · ${r.oem.tool}: ${r.oem.note}` : r.oemTool && !r.oemInstalled ? ` · ${r.oemTool} not installed` : ""));
   if (j.action === "feature_update") bits.push(r.upToDate ? `already on ${r.current}` : r.managed ? "managed by IT, left alone" : r.mode === "install" ? (r.result === "installed" ? `${r.target} installed · restart to finish` : r.result === "not offered" ? `${r.target} not offered by Windows Update yet` : `${r.target}: ${r.result}`) : `${r.current} → ${r.target} available`);
   if (j.action === "app_updates") bits.push(r.mode === "install" ? `${r.installed || 0} program(s) updated` : `${r.available || 0} program update(s) available`);

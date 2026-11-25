@@ -183,8 +183,10 @@ Section 'security' {
   $av = @(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction SilentlyContinue | ForEach-Object { $_.displayName })
   $th = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Sort-Object InitialDetectionTime -Descending | Select-Object -First 10 | ForEach-Object {
     [ordered]@{ when = $_.InitialDetectionTime.ToString('s'); threatId = $_.ThreatID; resources = Short ($_.Resources -join ' ; ') 200 } })
-  $names = @{}; foreach ($t in @(Get-MpThreat -ErrorAction SilentlyContinue)) { $names["$($t.ThreatID)"] = $t.ThreatName }
-  foreach ($t in $th) { $t['name'] = $names["$($t.threatId)"] }
+  $names = @{}; $activeIds = @{}; foreach ($t in @(Get-MpThreat -ErrorAction SilentlyContinue)) { $names["$($t.ThreatID)"] = $t.ThreatName; if ($t.IsActive) { $activeIds["$($t.ThreatID)"] = $true } }
+  $statusText = @{ 1 = 'detected'; 2 = 'cleaned'; 3 = 'quarantined'; 4 = 'removed'; 5 = 'allowed'; 6 = 'blocked'; 102 = 'quarantine failed'; 103 = 'remove failed'; 104 = 'allow failed'; 105 = 'abandoned'; 107 = 'block failed' }
+  foreach ($t in $th) { $t['name'] = $names["$($t.threatId)"]; $t['active'] = [bool]$activeIds["$($t.threatId)"] }
+  $i = 0; foreach ($d in @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Sort-Object InitialDetectionTime -Descending | Select-Object -First 10)) { $st = [int]$d.ThreatStatusID; $th[$i]['status'] = if ($statusText[$st]) { $statusText[$st] } else { "status $st" }; $i++ }
   [ordered]@{ antivirusProducts = $av; defenderEnabled = $mp.AntivirusEnabled; realTime = $mp.RealTimeProtectionEnabled; tamperProtected = $mp.IsTamperProtected
     signaturesUpdated = if ($mp.AntivirusSignatureLastUpdated) { $mp.AntivirusSignatureLastUpdated.ToString('s') } else { $null }
     quickScanAgeDays = if ($mp.QuickScanAge -ge 100000) { 'never' } else { $mp.QuickScanAge }

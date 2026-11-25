@@ -188,7 +188,7 @@ In the app, tap **Scan QR code** and point it at the PC's screen. The scan start
 | Privacy | Advertising ID, Start menu ads and suggestions, tailored experiences, Bing in Start, lock-screen tips, minimum telemetry |
 | Repair | SFC, DISM RestoreHealth, CHKDSK (scheduled), memory test, reset Windows Update, network stack, Store, search index |
 | Adware | Reset proxy, DNS and hosts; remove forced browser policies |
-| Security | Defender definitions update, quick/full/offline scan |
+| Security | Defender signature update, quick/full/offline scans, remove threats Defender found that are still on the PC |
 | Updates | Windows Update, driver updates (Windows Update plus Dell Command Update / Lenovo System Update / HP Image Assistant, installed for you on Dell and Lenovo), upgrade to the newest Windows 11 version (e.g. 25H2 → 26H2), update all programs via winget |
 | Finish | Restart with a countdown (or cancel it) |
 

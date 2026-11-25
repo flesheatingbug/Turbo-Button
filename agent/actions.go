@@ -110,6 +110,9 @@ var Catalog = []Action{
 		Desc:   "Quick scan takes a few minutes; full scan can take an hour or more. Reports any detections.",
 		Params: []Param{{Name: "type", Type: "enum", Enum: []string{"quick", "full"}, Desc: "Scan type"}}},
 
+	{ID: "defender_remove", Title: "Remove threats Defender found", Category: "security", Risk: "medium", Modifies: true, TimeoutMin: 30,
+		Desc: "Uses Defender's own clean-up to remove threats it detected that are still on the PC (not quarantined yet). Threats the customer deliberately allowed in Windows Security are left alone and listed. If something survives, follow with defender_offline_scan."},
+
 	{ID: "dns_flush", Title: "Flush DNS cache", Category: "network", Risk: "low", Modifies: true,
 		Desc: "ipconfig /flushdns."},
 
