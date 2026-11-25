@@ -378,8 +378,8 @@ func (r *Relay) uiSetup(w http.ResponseWriter, req *http.Request) {
 		fail(w, 403, "wrong setup code (see the container log: docker logs turbo-relay)")
 		return
 	}
-	if len(in.Password) < 10 {
-		fail(w, 400, "use a password of at least 10 characters")
+	if in.Password == "" {
+		fail(w, 400, "choose a password")
 		return
 	}
 	sec := make([]byte, 20)
@@ -538,8 +538,8 @@ func (r *Relay) uiPassword(w http.ResponseWriter, req *http.Request) {
 		fail(w, 403, "wrong current password or code")
 		return
 	}
-	if len(in.New) < 10 {
-		fail(w, 400, "use a password of at least 10 characters")
+	if in.New == "" {
+		fail(w, 400, "choose a new password")
 		return
 	}
 	r.cfg.PassSalt = randHex(16)

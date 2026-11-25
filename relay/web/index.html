@@ -42,7 +42,7 @@
       <h2>Set up this relay</h2>
       <p class="mut">Find the setup code in the container log (<code>docker logs turbo-relay</code>). Then choose a password for this page.</p>
       <label>Setup code</label><input id="sCode" autocomplete="off">
-      <label>New password (10+ characters)</label><input id="sPass" type="password" autocomplete="new-password">
+      <label>New password</label><input id="sPass" type="password" autocomplete="new-password">
       <label>Repeat password</label><input id="sPass2" type="password" autocomplete="new-password">
       <button class="b" id="sGo">Next</button>
     </div>
@@ -93,7 +93,7 @@
     <div class="card">
       <h2>Change password</h2>
       <label>Current password</label><input id="cCur" type="password" autocomplete="current-password">
-      <label>New password (10+ characters)</label><input id="cNew" type="password" autocomplete="new-password">
+      <label>New password</label><input id="cNew" type="password" autocomplete="new-password">
       <label>Code from your authenticator app</label><input id="cOtp" inputmode="numeric" autocomplete="one-time-code">
       <button id="cGo">Change password</button>
     </div>
