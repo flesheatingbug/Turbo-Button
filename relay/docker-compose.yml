@@ -2,10 +2,8 @@
 # Put it behind Nginx Proxy Manager (or any HTTPS reverse proxy) with Websockets Support on.
 services:
   turbo-relay:
-    build:
-      # Built straight from GitHub; no registry needed. To build from a local copy use: context: .
-      context: https://github.com/flesheatingbug/Turbo-Button.git#main:relay
-    image: turbo-relay:local
+    image: ghcr.io/flesheatingbug/turbo-relay:latest
+    # Or build it yourself from a copy of this folder instead of the image line:  build: .
     container_name: turbo-relay
     user: "${PUID}:${PGID}"
     environment:

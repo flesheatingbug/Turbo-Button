@@ -1,8 +1,8 @@
-FROM golang:1.24-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS build
 WORKDIR /src
 COPY . .
-ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o /turbo-relay .
+ARG VERSION=dev TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o /turbo-relay .
 
 FROM scratch
 COPY --from=build /turbo-relay /turbo-relay

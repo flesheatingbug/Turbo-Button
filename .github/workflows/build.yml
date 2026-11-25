@@ -74,6 +74,9 @@ jobs:
 
   relay:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -97,6 +100,19 @@ jobs:
         with:
           name: turbo-relay
           path: turbo-relay-linux-*
+      - name: Publish the Docker image (ghcr.io)
+        if: github.ref == 'refs/heads/main'
+        working-directory: relay
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          IMG=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/turbo-relay
+          docker buildx create --use >/dev/null
+          docker buildx build --platform linux/amd64,linux/arm64 --build-arg VERSION=build-${{ github.run_number }} \
+            --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
+            --label org.opencontainers.image.description="Turbo Button relay" \
+            -t $IMG:latest -t $IMG:build-${{ github.run_number }} --push .
 
   android-app:
     runs-on: ubuntu-latest

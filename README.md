@@ -315,7 +315,7 @@ flowchart LR
 ### Set up the relay
 
 1. On your server, get the `relay` folder from this repo (`docker-compose.yml` and `.env.example`). Copy `.env.example` to `.env` and set `APPDATA`, `PORT`, `PUBLIC_URL`, `PUID`/`PGID`.
-2. `mkdir -p $APPDATA/turbo-relay && chown PUID:PGID $APPDATA/turbo-relay`, then `docker compose up -d --build`. It builds straight from GitHub.
+2. `mkdir -p $APPDATA/turbo-relay && chown PUID:PGID $APPDATA/turbo-relay`, then `docker compose up -d`. It pulls the ready-made image `ghcr.io/flesheatingbug/turbo-relay` (amd64 and arm64).
 3. In **Nginx Proxy Manager**, add a proxy host for your domain (for example `turbo.example.com`) → the server's IP and `PORT`. Turn on **Websockets Support** and **Block Common Exploits**, and request an SSL certificate with **Force SSL**.
 4. Open `https://turbo.example.com`. Get the one-time setup code with `docker logs turbo-relay`, choose a password and scan the sign-in QR code with your authenticator app (Aegis, 2FAS, Google Authenticator, Bitwarden…).
 5. Tap **Pair a phone**. In the app go to **⚙ → Relay server → Pair with relay** and scan it.
