@@ -343,7 +343,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.10.12";
+const PAGE_VERSION = "0.10.13";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -911,7 +911,7 @@ function diagCards(s) {
       (cr.hardwareErrors90d ? `<div class="mut">Hardware error reports (WHEA): ${esc(cr.hardwareErrors90d)}</div>` : "") + `</div>`;
   }
   const pf = s.performance;
-  if (pf) h += `<div class="card"><h2>Right now</h2><div class="kv">${gbRow("CPU", pf.cpuNowPct + "%")}${gbRow("Memory in use", pf.committedPct + "% committed, " + pf.availableMB + " MB free")}${(pf.topCpu || []).length ? gbRow("Busiest", pf.topCpu.join(", ")) : ""}${pf.swapUsedPct ? gbRow("Swap used", pf.swapUsedPct + "%") : ""}${(pf.thermalZonesC || []).length ? gbRow("Temperature", pf.thermalZonesC.join(" / ") + " °C") : ""}</div></div>`;
+  if (pf) h += `<div class="card"><h2>Right now</h2><div class="kv">${gbRow("CPU", pf.cpuNowPct + "%")}${gbRow("Memory", (isLinux() ? "" : pf.committedPct + "% committed, ") + pf.availableMB + " MB available")}${(pf.topCpu || []).length ? gbRow("Busiest", pf.topCpu.join(", ")) : ""}${pf.swapUsedPct ? gbRow("Swap used", pf.swapUsedPct + "%") : ""}${(pf.thermalZonesC || []).length ? gbRow("Temperature", pf.thermalZonesC.join(" / ") + " °C") : ""}</div></div>`;
   const ad = adwareSigns(s), bn = s.browsersAndNetwork || {};
   if (bn.extensions || bn.dns) {
     const flags = ad.badSearch.length + ad.extFlags.length + ad.forced.length + (ad.proxy ? 1 : 0) + ad.dns.length + (ad.hosts.length ? 1 : 0);
@@ -1454,7 +1454,10 @@ function quickPlanLinux(s) {
   if ((ev.appCrashes30d || []).length >= 3) find("info", "Programs crashing", ev.appCrashes30d.slice(0, 6).join(", "));
   if ((ev.errorsLast7Days || 0) > 200) find("info", "Busy error log", `${ev.errorsLast7Days} errors in 7 days. Top: ` + (ev.topSources || []).slice(0, 3).map(x => `${x.source} (${x.count})`).join(", "));
   const pf = s.performance || {};
-  if (pf.committedPct > 85 || pf.swapUsedPct > 50) find("warn", "Memory pressure", `${pf.committedPct}% committed, swap ${pf.swapUsedPct}% used, ${pf.availableMB} MB free.`);
+  // Linux over-commits by design: "committed" above 100% is normal and says nothing about pressure.
+  // What matters is memory actually available and swap in use.
+  const ramMB = (+sys.ramGB || 0) * 1024, lowMem = pf.availableMB != null && pf.availableMB < Math.max(768, ramMB * 0.08);
+  if (lowMem || pf.swapUsedPct > 50) find("warn", "Memory pressure", `Only ${pf.availableMB} MB available, swap ${pf.swapUsedPct}% used — programs are short of RAM.`);
   if (pf.cpuNowPct > 60) find("warn", "Busy CPU at idle", `${pf.cpuNowPct}% — ` + (pf.topCpu || []).join(", "));
   if ((pf.thermalZonesC || []).some(t => t >= 85)) find("warn", "Running hot", pf.thermalZonesC.join(" / ") + " °C — clean fans and vents.");
   if ((sys.ramGB || 99) < 3.5) M.push({ title: "Add more RAM", detail: `${sys.ramGB} GB is tight for a modern desktop and browser.` });
