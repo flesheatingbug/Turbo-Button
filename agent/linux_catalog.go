@@ -79,6 +79,10 @@ var LinuxCatalog = []Action{
 		Desc:   "Short drive self-test (about 2 minutes) with smartctl, then reports the result. Needs smartmontools.",
 		Params: []Param{{Name: "device", Type: "string", Pattern: `^/dev/(sd[a-z]{1,2}|nvme[0-9]{1,2}n[0-9]{1,2}|hd[a-z]|vd[a-z])$`, Desc: "Disk, e.g. /dev/sda or /dev/nvme0n1"}}},
 
+	{ID: "problem_check", Title: "Look into the reported problem", Category: "diagnostics", Risk: "low", Long: true, TimeoutMin: 15,
+		Desc:   "Read-only. terms = keywords from the customer's problem (e.g. \"onedrive sign login\"). Collects matching warnings/errors from the last 7 days in the journal, matching processes, systemd units and packages, and for network/sign-in problems the clock, DNS and internet reachability.",
+		Params: []Param{{Name: "terms", Type: "string", Pattern: `^[a-z0-9 ._+-]{3,200}$`, Desc: "space-separated keywords"}}},
+
 	{ID: "disk_usage", Title: "Find what's using disk space", Category: "diagnostics", Risk: "low", Long: true, TimeoutMin: 30,
 		Desc: "Measures home folders, /var, /opt and other big folders. Read-only."},
 

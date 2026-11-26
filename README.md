@@ -189,6 +189,7 @@ In the app, tap **Scan QR code** and point it at the PC's screen. The scan start
 | Repair | SFC, DISM RestoreHealth, CHKDSK (scheduled), memory test, reset Windows Update, network stack, Store, search index |
 | Adware | Reset proxy, DNS and hosts; remove forced browser policies |
 | Security | Defender signature update, quick/full/offline scans, remove threats Defender found that are still on the PC |
+| The customer's problem | Type what's wrong ("OneDrive won't sign in"): **Look into it** collects matching errors from the last week, the related programs, services and processes, and for sign-in problems the account state, clock, proxy and whether Microsoft's servers answer. The plan, deep checks and AI answers then put that problem first |
 | Updates | Windows Update, driver updates (Windows Update plus Dell Command Update / Lenovo System Update / HP Image Assistant, installed for you on Dell and Lenovo), upgrade to the newest Windows 11 version (e.g. 25H2 → 26H2), update all programs via winget |
 | Finish | Restart with a countdown (or cancel it) |
 

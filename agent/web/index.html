@@ -253,6 +253,12 @@
       <div id="scanStatus" class="mut" style="margin-top:6px"></div>
     </div>
     <div class="card">
+      <h2>Customer's problem</h2>
+      <textarea id="problemText" rows="2" placeholder="What the customer says is wrong, e.g. OneDrive won't sign in"></textarea>
+      <div class="row" style="margin-top:8px"><button class="b2" id="problemCheck">Look into it</button><button class="b2" id="problemAsk">Ask AI about it</button></div>
+      <div class="mut" id="problemHint" style="margin-top:6px">Optional. The plan, deep checks and AI answers put this first.</div>
+    </div>
+    <div class="card">
       <div class="row"><h2 class="grow" style="margin:0">Deep checks <span class="mut" style="font-weight:400">· optional, 10–30 min</span></h2><button class="b2" id="deepBtn">Run</button></div>
       <div class="mut" style="margin-top:6px" id="deepInfo">Read-only checks that run in the background: pending Windows updates, outdated programs, system-file and Windows-image corruption, file-system errors, a malware quick scan and what's filling the disk. Worth it for slow, crashing or possibly infected PCs. Results feed into the plan.</div>
       <div id="deepStatus" class="mut" style="margin-top:6px"></div>
@@ -343,7 +349,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.10.13";
+const PAGE_VERSION = "0.11.0";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -387,7 +393,7 @@ function saveSessions() {
 }
 function saveState(sess = S) {
   if (!NATIVE || !sess.token) return;
-  try { localStorage.setItem("turbo.state." + sess.id, JSON.stringify({ plan: sess.plan, report: sess.report, form: sess.form, savedReport: sess.savedReport, prevJobs: sess.prevJobs, keepFirst: sess.keepFirst })); } catch {}
+  try { localStorage.setItem("turbo.state." + sess.id, JSON.stringify({ plan: sess.plan, report: sess.report, form: sess.form, savedReport: sess.savedReport, prevJobs: sess.prevJobs, keepFirst: sess.keepFirst, problem: sess.problem })); } catch {}
   saveRecord(sess);
 }
 function loadSessions() {
@@ -971,7 +977,7 @@ Rules:
 - Things the agent cannot do (driver installs, editing fstab, GRUB, hardware) go in "manual".
 Reply with JSON only, no prose, in this shape:
 {"summary":"2-4 sentences for the technician","health":"good|fair|poor","findings":[{"severity":"info|warn|critical","title":"","detail":""}],"proposals":[{"action":"id","params":{},"reason":"why","risk":"low|medium|high","askCustomer":false}],"manual":[{"title":"","detail":""}]}`;
-const planSystem = () => isLinux() ? PLAN_SYSTEM_LINUX : PLAN_SYSTEM;
+const planSystem = () => (isLinux() ? PLAN_SYSTEM_LINUX : PLAN_SYSTEM) + (problemText() ? PROBLEM_RULE : "");
 const PLAN_SYSTEM = `You are an expert Windows repair technician's assistant. A technician is servicing a customer's PC and will approve each step on their phone.
 You get a JSON scan of the PC and a catalog of actions the on-PC agent can run. Produce a prioritised plan using ONLY catalog actions with valid parameters (use names, locations and paths exactly as they appear in the scan).
 Rules:
@@ -994,9 +1000,27 @@ Rules:
 Reply with JSON only, no prose, in this shape:
 {"summary":"2-4 sentences for the technician","health":"good|fair|poor","findings":[{"severity":"info|warn|critical","title":"","detail":""}],"proposals":[{"action":"id","params":{},"reason":"why","risk":"low|medium|high","askCustomer":false}],"manual":[{"title":"","detail":""}]}`;
 
+// ---------- the customer's reported problem ----------
+const problemText = () => (S.problem || "").trim();
+const problemBlock = () => problemText() ? `CUSTOMER'S REPORTED PROBLEM (top priority): "${problemText()}"\n\n` : "";
+const PROBLEM_RULE = `
+- If a CUSTOMER'S REPORTED PROBLEM is given, it comes first: start the summary by saying whether the data explains it; put findings about it first; list the proposals that address it first, with reasons saying how they help; and give specific troubleshooting steps for it in "manual", most likely fix first. Use DEEP CHECK RESULTS.problem_check (matching errors, processes, services, sign-in/network checks) when present. Routine maintenance still follows after.`;
+// Keywords for problem_check: the description's own words plus the names Windows/Linux log them under.
+const PROBLEM_SYN = [[/one ?drive/, "onedrive"], [/outlook|e-?mail/, "outlook olk mapi exchange"], [/teams/, "teams msteams"], [/office|\bword\b|excel|powerpoint|365/, "office officeclicktorun"],
+  [/sign|log ?in|logon|password|account|credential/, "sign login aad credential token"], [/print/, "print spooler"], [/wi-?fi|wireless|internet|network|connect/, "wlan network dns dhcp"],
+  [/sound|audio|speaker|headphone|mic/, "audio audiosrv"], [/bluetooth/, "bluetooth bthserv"], [/camera|webcam/, "camera"], [/edge|chrome|firefox|browser/, "browser msedge chrome firefox"],
+  [/slow|freez|hang|lag/, "hang timeout"], [/crash|blue ?screen|bsod|restart/, "crash bugcheck kernel-power"], [/update/, "update windowsupdate"], [/activat|licen/, "activation sppsvc licensing"]];
+const PROBLEM_STOP = new Set("won asks ask time times every all again now new old the and but not won't wont can't cant doesn't doesnt isn't isnt keeps keep when with this that from have has had into onto for are was were will just very really since after before every always never anymore any some customer says said says pc computer laptop machine working work works problem issue error errors getting gets get got trying tries tried open opens start starts".split(" "));
+function problemTerms(text) {
+  const t = (text || "").toLowerCase(), out = [];
+  for (const [rx, words] of PROBLEM_SYN) if (rx.test(t)) out.push(...words.split(" "));
+  for (const w of t.replace(/[^a-z0-9._+-]+/g, " ").split(" ")) if (w.length >= 3 && !PROBLEM_STOP.has(w)) out.push(w);
+  return [...new Set(out)].slice(0, 10).join(" ");
+}
+
 function planUser() {
   const d = deepResults();
-  return "ACTION CATALOG:\n" + catalogText() + "\n\nSCAN:\n" + compactScan(S.scan) + (Object.keys(d).length ? "\n\nDEEP CHECK RESULTS (read-only checks already run):\n" + JSON.stringify(d) : "");
+  return problemBlock() + "ACTION CATALOG:\n" + catalogText() + "\n\nSCAN:\n" + compactScan(S.scan) + (Object.keys(d).length ? "\n\nDEEP CHECK RESULTS (read-only checks already run):\n" + JSON.stringify(d) : "");
 }
 function usePlan(plan, source, sess = S) {
   if (!plan || typeof plan !== "object") throw new Error("Reply didn't contain a plan");
@@ -1033,7 +1057,7 @@ function chatPrompt(system, data, shape) {
 }
 function planUserChat() {
   const d = deepResults();
-  return "ACTION CATALOG:\n" + catalogText() + "\n\nSCAN:\n" + compactScan(S.scan, true) + (Object.keys(d).length ? "\n\nDEEP CHECK RESULTS:\n" + JSON.stringify(d) : "");
+  return problemBlock() + "ACTION CATALOG:\n" + catalogText() + "\n\nSCAN:\n" + compactScan(S.scan, true) + (Object.keys(d).length ? "\n\nDEEP CHECK RESULTS:\n" + JSON.stringify(d) : "");
 }
 // For AI apps: the short instruction goes in the user's own message and the scan goes as an attached file,
 // so the AI treats the instruction as the request (instructions inside a long paste get treated as content).
@@ -1163,7 +1187,27 @@ function remoteAccessFinding(s, find) {
   const ra = (s.startup || []).filter(x => x.enabled && startupInfo(x).advice === "check");
   if (ra.length) find("warn", "Remote-access software starts automatically", ra.map(x => x.name).join(", ") + " — ask the customer if they installed it and still use it. Scammers often leave these behind.");
 }
-function quickPlan(s) { return isLinux() ? quickPlanLinux(s) : quickPlanWin(s); }
+function quickPlan(s) { const p = isLinux() ? quickPlanLinux(s) : quickPlanWin(s); addProblemFindings(p); return p; }
+// What the problem_check deep check found, at the top of the quick plan.
+function addProblemFindings(p) {
+  const d = deepResults().problem_check, r = d?.status === "done" ? d.result || {} : null;
+  if (!problemText()) return;
+  const F = [], M = [];
+  if (!r) { M.push({ title: `Customer's problem: ${problemText()}`, detail: "Tap \"Look into it\" on the Scan tab to collect matching errors and checks, then redo the plan, or use Ask AI about it." }); }
+  else {
+    for (const e of (r.events || []).slice(0, 6)) F.push({ severity: /error|critical/i.test(e.level || "") || !e.level ? "warn" : "info", title: `${e.source}${e.id ? " " + e.id : ""} ×${e.count}`, detail: `${e.last || ""} — ${e.message || ""}` });
+    const down = (r.reachable || []).filter(x => !x.ok).map(x => x.host);
+    if (down.length) F.push({ severity: "critical", title: "Can't reach sign-in/internet servers", detail: down.join(", ") + " — check the internet connection, DNS, proxy or firewall." });
+    if (r.proxy && (r.proxy.enabled || r.proxy.autoConfig)) F.push({ severity: "warn", title: "A proxy is set", detail: `${r.proxy.server || r.proxy.autoConfig} — a wrong proxy breaks sign-ins.` });
+    if (r.oneDrive?.disabledByPolicy) F.push({ severity: "critical", title: "OneDrive is disabled by policy", detail: (r.oneDrive.policies || []).join(", ") });
+    if (r.oneDrive && !(r.oneDrive.installs || []).length) F.push({ severity: "warn", title: "OneDrive isn't installed", detail: "Reinstall it from Microsoft." });
+    const prt = (r.accountJoin || []).find(l => /AzureAdPrt :/.test(l));
+    if (prt && /NO/.test(prt)) F.push({ severity: "info", title: "No Microsoft work/school sign-in token on this PC", detail: "Normal on home PCs; for work accounts it means Windows isn't signed in to the organisation." });
+    if (!F.length) F.push({ severity: "info", title: "Nothing in the logs matches the problem", detail: "Looked for: " + (r.terms || []).join(", ") + ". Try other words, or Ask AI about it." });
+    M.push({ title: `Customer's problem: ${problemText()}`, detail: "The findings at the top are what the deep check found about it. For step-by-step help, use Ask AI about it." });
+  }
+  p.findings = F.concat(p.findings || []); p.manual = M.concat(p.manual || []);
+}
 function quickPlanWin(s) {
   const P = [], F = [], M = [];
   const prop = (action, params, reason, risk = "low", askCustomer = false) => {
@@ -1522,15 +1566,17 @@ function buildManual() {
   };
 }
 
-const askSystem = () => `You are an expert ${isLinux() ? "Linux" : "Windows"} repair technician's assistant. Answer concisely and practically, for a technician, using the scan data. Plain text, no markdown tables.`;
+const askSystem = () => `You are an expert ${isLinux() ? "Linux" : "Windows"} repair technician's assistant. Answer concisely and practically, for a technician, using the scan data. Plain text, no markdown tables.` +
+  (problemText() ? ` The customer's reported problem is "${problemText()}": relate your answer to it where it helps, and use the problem_check deep-check results if present.` : "");
 const askWork = () => JSON.stringify(allJobs().filter(j => j.status === "done" || j.status === "failed").map(j => ({ action: j.action, params: j.params, status: j.status, result: j.result, error: j.error })));
 // Free route: the scan goes to the Claude/ChatGPT app as a file, the question as the message.
 // The technician can keep chatting there; sharing the reply back shows it here.
 function askInApp(q) {
   if (!S.scan) { toast("Run a scan first"); show("scan"); return; }
   const content = `TURBO BUTTON — DATA ABOUT THE PC BEING REPAIRED\n\n${askSystem()} Answer the technician's question in the chat message using this data. ` +
-    `The technician may ask follow-up questions in the same chat.\n\n=== SCAN (${S.name || "PC"}) ===\n${compactScan(S.scan, true)}\n\n=== WORK DONE SO FAR ===\n${askWork()}\n=== END ===\n`;
-  const message = `I'm a computer repair technician. The attached file is a diagnostic scan of a customer's ${isLinux() ? "Linux" : "Windows"} PC (${S.name || ""}). Using it, answer: ${q}`;
+    `The technician may ask follow-up questions in the same chat.\n\n${problemBlock()}=== SCAN (${S.name || "PC"}) ===\n${compactScan(S.scan, true)}\n\n` +
+    (Object.keys(deepResults()).length ? `=== DEEP CHECK RESULTS ===\n${JSON.stringify(deepResults())}\n\n` : "") + `=== WORK DONE SO FAR ===\n${askWork()}\n=== END ===\n`;
+  const message = `I'm a computer repair technician. The attached file is a diagnostic scan of a customer's ${isLinux() ? "Linux" : "Windows"} PC (${S.name || ""}). ${problemText() ? ` The customer's problem: "${problemText()}".` : ""} Using it, answer: ${q}`;
   try { localStorage.setItem("turbo.askPending", String(Date.now())); } catch {}
   if (NATIVE && window.TurboNative.shareToAI) shareToApp("TurboButton-pc-scan.txt", content, message, message + "\n\n" + content);
   else { copyText(message + "\n\n" + content); toast("Copied: paste it into a chat in your AI app.", 6000); }
@@ -1545,7 +1591,7 @@ $("askBtn").onclick = async () => {
   $("askHint").textContent = "";
   $("askOut").innerHTML = '<span class="spin"></span>';
   try {
-    const t = await askAI(askSystem(), "SCAN:\n" + (S.scan ? compactScan(S.scan) : "none yet") + "\n\nWORK DONE:\n" + askWork() + "\n\nQUESTION: " + q, 2000);
+    const t = await askAI(askSystem(), problemBlock() + "SCAN:\n" + (S.scan ? compactScan(S.scan) : "none yet") + (Object.keys(deepResults()).length ? "\n\nDEEP CHECK RESULTS:\n" + JSON.stringify(deepResults()) : "") + "\n\nWORK DONE:\n" + askWork() + "\n\nQUESTION: " + q, 2000);
     $("askOut").textContent = t;
   } catch (e) { $("askOut").textContent = "AI error: " + e.message; }
 };
@@ -1742,7 +1788,7 @@ function renderJobs() {
 const DEEP = [["windows_update", { mode: "check", drivers: true }], ["driver_updates", { mode: "check" }], ["feature_update", { mode: "check" }], ["app_updates", { mode: "list" }], ["disk_usage", {}], ["dism_check", {}], ["sfc_verify", {}], ["chkdsk_scan", { drive: "C" }], ["defender_scan", { type: "quick" }]];
 const DEEP_LINUX = [["updates_check", {}], ["disk_usage", {}]];
 const deepList = () => isLinux() ? DEEP_LINUX.concat((S.scan?.physicalDisks || []).filter(d => d.health && !/unknown/.test(d.health)).map(d => ["smart_test", { device: d.device }])) : DEEP;
-const isDeepJob = (j) => j.action === "smart_test" || DEEP.concat(DEEP_LINUX).some(([a, p]) => a === j.action && Object.entries(p).every(([k, v]) => String(j.params?.[k]) === String(v)));
+const isDeepJob = (j) => j.action === "smart_test" || j.action === "problem_check" || DEEP.concat(DEEP_LINUX).some(([a, p]) => a === j.action && Object.entries(p).every(([k, v]) => String(j.params?.[k]) === String(v)));
 function deepResults() {
   const out = {};
   for (const j of allJobs()) if (isDeepJob(j) && (j.status === "done" || j.status === "failed")) out[j.action === "smart_test" ? "smart_test " + j.params?.device : j.action] = { status: j.status, result: j.result, error: j.error };
@@ -1758,7 +1804,25 @@ $("deepBtn").onclick = async () => {
     if (S.jobs.some(j => isDeepJob(j) && j.action === a && JSON.stringify(j.params || {}) === JSON.stringify(p) && (j.status === "queued" || j.status === "running"))) continue;
     try { await queue(a, p, "Deep check (read-only)"); n++; } catch (e) { toast(e.message); }
   }
+  const pt = problemTerms(problemText());
+  if (pt && !S.jobs.some(j => j.action === "problem_check" && (j.status === "queued" || j.status === "running"))) { try { await queue("problem_check", { terms: pt }, "Deep check: the customer's problem"); n++; } catch (e) { toast(e.message); } }
   $("deepStatus").textContent = n ? `${n} check(s) queued — they run one after another. Watch them on the Fix tab.` : "Deep checks are already running.";
+};
+$("problemText").oninput = () => { S.problem = $("problemText").value; clearTimeout(S.probT); S.probT = setTimeout(() => saveState(), 600); };
+$("problemCheck").onclick = async () => {
+  if (!S.token) { toast("Connect to a PC first"); return; }
+  const t = problemTerms($("problemText").value);
+  if (!t) { toast("Describe the problem first, e.g. OneDrive won't sign in"); $("problemText").focus(); return; }
+  S.problem = $("problemText").value; saveState();
+  try { await queue("problem_check", { terms: t }, "Look into the customer's problem"); $("problemHint").textContent = "Looking into it (read-only, a minute or two). Then make the plan or Ask AI about it — both will use what it finds."; }
+  catch (e) { toast(e.message); }
+};
+$("problemAsk").onclick = () => {
+  S.problem = $("problemText").value; saveState();
+  if (!problemText()) { toast("Describe the problem first"); $("problemText").focus(); return; }
+  if (!S.scan) { toast("Run a scan first"); return; }
+  $("askQ").value = `The customer's problem: ${problemText()}. From the scan${deepResults().problem_check ? " and the problem check" : ""}, what's the most likely cause, and what should I try, in order?`;
+  show("plan"); $("askQ").scrollIntoView({ behavior: "smooth", block: "center" }); $("askBtn").click();
 };
 function deepStatusText() {
   const dj = S.jobs.filter(isDeepJob); if (!dj.length) return "";
@@ -1771,6 +1835,7 @@ function deepStatusText() {
 function aiReady() { const a = getAI(); return a.provider === "manual" || a.provider === "ollama" || a.provider === "openai" || !!a.key; }
 let flowAction = null;
 function updateFlow() {
+  if ($("problemText") && document.activeElement !== $("problemText") && $("problemText").value !== (S.problem || "")) $("problemText").value = S.problem || "";
   const connected = !!S.info && !S.ended && S.status !== "lost";
   const scans = S.jobs.filter(j => j.action === "scan");
   const scanBusy = scans.some(j => j.status === "queued" || j.status === "running");
@@ -1823,7 +1888,7 @@ function renderBA() {
 }
 
 // ---------- report ----------
-const REPORT_SYSTEM = `You write service reports for a computer repair technician. Use the before/after scan data and the work log. Be accurate: only claim work that appears in the log with status done; mention failures honestly.
+const REPORT_SYSTEM = `You write service reports for a computer repair technician. Use the before/after scan data and the work log. If reportedProblem is given, the report says what was found and done about it first. Be accurate: only claim work that appears in the log with status done; mention failures honestly.
 Reply with JSON only: {"headline":"one line","customerSummary":"plain-English paragraph for a non-technical customer","workDone":["short bullet per completed action, with results like space freed"],"issuesFound":["problems found, incl. ones not fixed"],"recommendations":["next steps for the customer, e.g. hardware, backups, habits"],"technicalNotes":"short paragraph for the technician's records"}`;
 function keyMetrics(s) {
   if (!s) return null;
@@ -1834,13 +1899,13 @@ function keyMetrics(s) {
     blueScreens: (s.crashes?.bugchecks90d || []).map(b => b.code + " " + bugInfo(b.code)), adwareSigns: adwareSigns(s), memoryTest: s.memoryTest };
 }
 function workLog() { return allJobs().filter(j => j.action !== "scan" && j.status !== "queued").map(j => ({ action: j.title, params: j.params, status: j.status, reason: j.reason, result: j.result, error: j.error, started: j.started, finished: j.finished })); }
-function reportUser() { return JSON.stringify({ beforeAfter: baRows(), deepChecks: deepResults(), before: keyMetrics(S.firstScan), after: S.firstScan?.scannedAt !== S.scan?.scannedAt ? keyMetrics(S.scan) : null, workLog: workLog(), technicianNotes: $("rNotes").value }); }
+function reportUser() { return JSON.stringify({ reportedProblem: problemText() || undefined, beforeAfter: baRows(), deepChecks: deepResults(), before: keyMetrics(S.firstScan), after: S.firstScan?.scannedAt !== S.scan?.scannedAt ? keyMetrics(S.scan) : null, workLog: workLog(), technicianNotes: $("rNotes").value }); }
 function basicReport() {
   const done = allJobs().filter(j => j.action !== "scan" && j.status === "done");
   const q = S.scan ? quickPlan(S.scan) : { findings: [], manual: [] };
   const total = allJobs().reduce((t, j) => t + (j.status === "done" && j.result?.freedBytes > 0 ? j.result.freedBytes : 0), 0);
   return { headline: "Service report",
-    customerSummary: ($("rNotes").value ? $("rNotes").value + " " : "") + `Completed ${done.length} maintenance task(s)` + (total ? `, freeing ${fmtBytes(total)} of disk space` : "") + ".",
+    customerSummary: (problemText() ? `Reported problem: ${problemText()}. ` : "") + ($("rNotes").value ? $("rNotes").value + " " : "") + `Completed ${done.length} maintenance task(s)` + (total ? `, freeing ${fmtBytes(total)} of disk space` : "") + ".",
     workDone: done.map(j => j.title + (Object.keys(j.params || {}).length ? " (" + Object.values(j.params).join(", ") + ")" : "") + (resultLine(j) ? " — " + resultLine(j) : "")),
     issuesFound: q.findings.filter(f => f.severity !== "info").map(f => f.title + ": " + f.detail).concat(allJobs().filter(j => j.status === "failed").map(j => "Could not complete: " + j.title + " (" + j.error + ")")),
     recommendations: q.manual.map(m => m.title + " — " + m.detail), technicalNotes: "" };

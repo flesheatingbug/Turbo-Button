@@ -69,6 +69,9 @@ func mockRun(ctx context.Context, name string, env map[string]string, onLine fun
 	if name == "feature_update" && env["PCM_mode"] == "check" {
 		return json.RawMessage(`{"mode":"check","current":"25H2","build":26200,"os":"Windows 11","target":"26H2","upToDate":false,"managed":false,"result":"upgrade available"}`), nil
 	}
+	if name == "problem_check" {
+		return json.RawMessage(`{"terms":["onedrive","sign","login"],"events":[{"log":"Microsoft-Windows-AAD/Operational","source":"Microsoft-Windows-AAD","id":1098,"level":"Error","count":14,"last":"2026-11-25T09:12:03","message":"Error: 0xCAA2000C The request requires user interaction. Code: interaction_required"}],"processes":[{"name":"OneDrive","pid":4412,"memMB":88}],"services":[],"programs":[{"name":"Microsoft OneDrive","version":"25.201.1012.0001"}],"reachable":[{"host":"login.microsoftonline.com","ok":true,"ms":31},{"host":"login.live.com","ok":true,"ms":28}],"clock":{"now":"2026-11-25T10:00:00","timeZone":"GMT Standard Time","lastSync":"25/11/2026 08:01:12"},"proxy":{"enabled":false},"oneDrive":{"installs":[{"version":"25.201.1012.0001"}],"running":true,"disabledByPolicy":false}}`), nil
+	}
 	if name == "windows_update" && env["PCM_mode"] == "check" {
 		return json.RawMessage(`{"mode":"check","found":2,"updates":[{"title":"2026-11 Cumulative Update (KB5099999)","driver":false},{"title":"Intel - Display - 31.0.101","driver":true}]}`), nil
 	}

@@ -124,6 +124,10 @@ var Catalog = []Action{
 			{Name: "mode", Type: "enum", Enum: []string{"check", "install"}, Desc: "check or install"},
 			{Name: "drivers", Type: "bool", Desc: "include driver updates"}}},
 
+	{ID: "problem_check", Title: "Look into the reported problem", Category: "diagnostics", Risk: "low", Long: true, TimeoutMin: 15,
+		Desc:   "Read-only. terms = keywords from the customer's problem (e.g. \"onedrive sign login\"). Collects matching warnings/errors from the last 7 days (incl. AAD/OneDrive/print/Wi-Fi logs when relevant), matching processes, services and programs, and for sign-in problems the account join state (dsregcmd), clock, proxy and whether Microsoft's sign-in servers are reachable.",
+		Params: []Param{{Name: "terms", Type: "string", Pattern: `^[a-z0-9 ._+-]{3,200}$`, Desc: "space-separated keywords"}}},
+
 	{ID: "driver_updates", Title: "Update drivers", Category: "updates", Risk: "low", Long: true, Modifies: true, TimeoutMin: 120, Reboot: true,
 		Desc: "mode=check lists newer drivers; mode=install installs driver updates from Windows Update, then runs the PC maker's own updater (Dell Command Update, Lenovo System Update, HP Image Assistant) if it's installed. oemtool=true installs Dell/Lenovo's updater with winget first if missing. Also reports graphics drivers that are still old.",
 		Params: []Param{
