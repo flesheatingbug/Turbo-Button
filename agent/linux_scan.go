@@ -1081,7 +1081,7 @@ func scanRemoteTools() any {
 	homes, _ := filepath.Glob("/home/*")
 	homes = append(homes, "/root")
 	ad := regexp.MustCompile(`(?m)^ad\.anynet\.id=(\d+)`)
-	for _, p := range append([]string{"/etc/anydesk/system.conf"}, prefixAll(homes, "/.anydesk/system.conf")...) {
+	for _, p := range append(append([]string{"/etc/anydesk/system.conf", "/etc/anydesk/service.conf"}, prefixAll(homes, "/.anydesk/system.conf")...), prefixAll(homes, "/.anydesk/service.conf")...) {
 		add("AnyDesk", find(p, ad), p)
 	}
 	add("TeamViewer", find("/etc/teamviewer/global.conf", regexp.MustCompile(`ClientID\s*=\s*(\d+)`)), "/etc/teamviewer/global.conf")

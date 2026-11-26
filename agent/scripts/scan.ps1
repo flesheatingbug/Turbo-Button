@@ -42,7 +42,7 @@ Section 'system' {
 Section 'remoteTools' {
   $ids = @()
   $users = @(Get-ChildItem "$env:SystemDrive\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-  $adConf = @("$env:ProgramData\AnyDesk\system.conf") + @(Get-ChildItem "$env:ProgramData\AnyDesk\*\system.conf" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) + @($users | ForEach-Object { "$_\AppData\Roaming\AnyDesk\system.conf" })
+  $adConf = @(foreach ($n in 'system.conf', 'service.conf') { "$env:ProgramData\AnyDesk\$n"; Get-ChildItem "$env:ProgramData\AnyDesk\*\$n" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }; $users | ForEach-Object { "$_\AppData\Roaming\AnyDesk\$n" } })
   foreach ($f in $adConf) {
     if (Test-Path -LiteralPath $f) {
       $m = Select-String -LiteralPath $f -Pattern '^ad\.anynet\.id=(\d+)' -ErrorAction SilentlyContinue | Select-Object -First 1
