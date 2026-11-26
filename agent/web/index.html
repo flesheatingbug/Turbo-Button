@@ -306,11 +306,11 @@
     <div class="card">
       <h2>Power</h2>
       <div class="row" style="flex-wrap:wrap;gap:8px">
-        <button class="b2" id="pwrRestart">Restart PC</button>
+        <button class="b2" id="pwrRestart">Restart &amp; continue</button>
         <button class="b2" id="pwrShutdown">Shut down PC</button>
         <button class="b2" id="pwrCancel">Cancel</button>
       </div>
-      <div class="mut" style="margin-top:6px">Restart and shut down give the customer a 1-minute warning and end the session. To close just Turbo Button on the PC (and keep it on), use <b>End</b> at the top.</div>
+      <div class="mut" style="margin-top:6px"><b>Restart &amp; continue</b> reboots the PC, then (on Windows) reopens Turbo Button after login so the phone reconnects and the job carries on. Both give the customer a 1-minute warning and drop the connection until the PC is back. To close just Turbo Button on the PC and leave it running, use <b>End</b> at the top.</div>
     </div>
   </section>
 
@@ -362,7 +362,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.11.7";
+const PAGE_VERSION = "0.11.8";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -2175,11 +2175,13 @@ function renderSession() {
 async function powerAction(action, label) {
   if (!S.info) { toast("Not connected to a PC"); return; }
   const busy = S.jobs.some(j => j.status === "running" || j.status === "queued");
-  if (!await ask({ title: `${label} ${S.name}?`, facts: [busy ? "Jobs are still queued or running — do this last" : null, "The customer gets a 1-minute warning on the PC", "The session ends and the phone disconnects"].filter(Boolean), note: `You can tap Cancel within the minute${action === "shutdown_pc" ? "" : ", or the PC comes back and reconnects by itself"}.`, ok: label, danger: true })) return;
+  const restart = action === "restart_pc", win = !isLinux();
+  const back = restart ? (win ? "Turbo Button reopens after login and the phone reconnects on its own — the job carries on." : "On Linux it won't reopen by itself yet: run the AppImage again after the reboot and scan the new QR code.") : "The PC powers off; reconnect when it's next on.";
+  if (!await ask({ title: `${label} ${S.name}?`, facts: [busy ? "Jobs are still queued or running — do this last" : null, "The customer gets a 1-minute warning on the PC", "The phone disconnects while the PC is down"].filter(Boolean), note: back + " You can tap Cancel within the minute.", ok: label, danger: true })) return;
   try { await queue(action, { minutes: "1" }, label + " from the phone"); toast(`${label} in 1 minute. Watch the Fix tab.`); show("jobs"); }
   catch (e) { toast(e.message); }
 }
-$("pwrRestart").onclick = () => powerAction("restart_pc", "Restart");
+$("pwrRestart").onclick = () => powerAction("restart_pc", "Restart & continue");
 $("pwrShutdown").onclick = () => powerAction("shutdown_pc", "Shut down");
 $("pwrCancel").onclick = async () => {
   if (!S.info) { toast("Not connected to a PC"); return; }
