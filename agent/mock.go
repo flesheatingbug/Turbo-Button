@@ -72,6 +72,9 @@ func mockRun(ctx context.Context, name string, env map[string]string, onLine fun
 	if name == "shutdown_pc" {
 		return json.RawMessage(`{"note":"Shutting down in ` + env["PCM_minutes"] + ` min (simulated)."}`), nil
 	}
+	if name == "stress_test" {
+		return json.RawMessage(`{"target":"` + env["PCM_target"] + `","requestedSec":60,"cores":8,"idleTempC":44,"maxTempC":82,"tempAvailable":true,"stoppedEarly":false,"verdict":"stable","note":"Held up for the full run (max 82 C)."}`), nil
+	}
 	if name == "problem_check" {
 		return json.RawMessage(`{"terms":["onedrive","sign","login"],"events":[{"log":"Microsoft-Windows-AAD/Operational","source":"Microsoft-Windows-AAD","id":1098,"level":"Error","count":14,"last":"2026-11-25T09:12:03","message":"Error: 0xCAA2000C The request requires user interaction. Code: interaction_required"}],"processes":[{"name":"OneDrive","pid":4412,"memMB":88}],"services":[],"programs":[{"name":"Microsoft OneDrive","version":"25.201.1012.0001"}],"reachable":[{"host":"login.microsoftonline.com","ok":true,"ms":31},{"host":"login.live.com","ok":true,"ms":28}],"clock":{"now":"2026-11-25T10:00:00","timeZone":"GMT Standard Time","lastSync":"25/11/2026 08:01:12"},"proxy":{"enabled":false},"oneDrive":{"installs":[{"version":"25.201.1012.0001"}],"running":true,"disabledByPolicy":false}}`), nil
 	}

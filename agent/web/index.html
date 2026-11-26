@@ -263,6 +263,18 @@
       <div class="mut" id="problemHint" style="margin-top:6px">Optional. The plan, deep checks and AI answers put this first.</div>
     </div>
     <div class="card">
+      <h2>Stress test</h2>
+      <div class="mut" style="margin:-2px 0 8px">Loads the CPU hard to shake out overheating, throttling or crashes. Watches the temperature and stops early at 97 C. Changes nothing; tap Stop on the Fix tab to end it any time.</div>
+      <div class="row" style="flex-wrap:wrap;gap:8px;align-items:center">
+        <label class="mut">For</label>
+        <select id="stressMin" style="width:auto"><option value="1">1 min</option><option value="3" selected>3 min</option><option value="5">5 min</option></select>
+        <label class="mut">load</label>
+        <select id="stressTarget" style="width:auto"><option value="cpu" selected>CPU</option><option value="all">CPU + RAM</option></select>
+        <button class="b2" id="stressBtn">Start</button>
+      </div>
+      <div class="mut" id="stressHint" style="margin-top:6px"></div>
+    </div>
+    <div class="card">
       <div class="row"><h2 class="grow" style="margin:0">Deep checks <span class="mut" style="font-weight:400">· optional, 10–30 min</span></h2><button class="b2" id="deepBtn">Run</button></div>
       <div class="mut" style="margin-top:6px" id="deepInfo">Read-only checks that run in the background: pending Windows updates, outdated programs, system-file and Windows-image corruption, file-system errors, a malware quick scan and what's filling the disk. Worth it for slow, crashing or possibly infected PCs. Results feed into the plan.</div>
       <div id="deepStatus" class="mut" style="margin-top:6px"></div>
@@ -362,7 +374,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.11.8";
+const PAGE_VERSION = "0.11.9";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -1747,6 +1759,7 @@ function resultLine(j) {
   if (r.detections) bits.push(r.detections.length + " detection(s)");
   if (r.problemsFound != null) bits.push(r.problemsFound ? "problems found" : "no problems");
   if (j.action === "windows_update") bits.push(r.mode === "install" ? `${r.installed || 0} installed${r.failed ? ", " + r.failed + " failed" : ""}` : `${r.found || 0} update(s) available`);
+  if (j.action === "stress_test") bits.push(`${({stable:"stable",["hot but held"]:"hot but held",overheated:"OVERHEATED — stopped early",throttled:"throttled"})[r.verdict] || r.verdict}` + (r.tempAvailable ? `, max ${r.maxTempC} C` : "") + (r.minClockPct != null && r.minClockPct < 100 ? `, clock down to ${r.minClockPct}%` : ""));
   if (j.action === "defender_remove") bits.push(`${r.removed || 0} removed` + ((r.stillActive || []).length ? ` · ${r.stillActive.length} still present` : "") + ((r.allowed || []).length ? ` · ${r.allowed.length} allowed, left alone` : ""));
   if (j.action === "driver_updates") bits.push((r.mode === "install" ? `${r.installed || 0} driver(s) installed${r.failed ? ", " + r.failed + " failed" : ""}` : `${r.found || 0} newer driver(s)`) + (r.oem ? ` · ${r.oem.tool}: ${r.oem.note}` : r.oemTool && !r.oemInstalled ? ` · ${r.oemTool} not installed` : ""));
   if (j.action === "feature_update") bits.push((r.upToDate ? `already on ${r.current}` : r.managed ? "managed by IT, left alone" : r.mode === "install" ? (r.result === "installed" ? `${r.target} installed · restart to finish` : r.result === "not offered" ? `${r.target} not offered by Windows Update yet` : `${r.target}: ${r.result}`) : `${r.current} → ${r.target} available`) + (r.bypass ? " · requirements bypassed" : ""));
@@ -1814,7 +1827,7 @@ function renderJobs() {
 const DEEP = [["windows_update", { mode: "check", drivers: true }], ["driver_updates", { mode: "check" }], ["feature_update", { mode: "check" }], ["app_updates", { mode: "list" }], ["disk_usage", {}], ["dism_check", {}], ["sfc_verify", {}], ["chkdsk_scan", { drive: "C" }], ["defender_scan", { type: "quick" }]];
 const DEEP_LINUX = [["updates_check", {}], ["disk_usage", {}]];
 const deepList = () => isLinux() ? DEEP_LINUX.concat((S.scan?.physicalDisks || []).filter(d => d.health && !/unknown/.test(d.health)).map(d => ["smart_test", { device: d.device }])) : DEEP;
-const isDeepJob = (j) => j.action === "smart_test" || j.action === "problem_check" || DEEP.concat(DEEP_LINUX).some(([a, p]) => a === j.action && Object.entries(p).every(([k, v]) => String(j.params?.[k]) === String(v)));
+const isDeepJob = (j) => j.action === "smart_test" || j.action === "problem_check" || j.action === "stress_test" || DEEP.concat(DEEP_LINUX).some(([a, p]) => a === j.action && Object.entries(p).every(([k, v]) => String(j.params?.[k]) === String(v)));
 function deepResults() {
   const out = {};
   for (const j of allJobs()) if (isDeepJob(j) && (j.status === "done" || j.status === "failed")) out[j.action === "smart_test" ? "smart_test " + j.params?.device : j.action] = { status: j.status, result: j.result, error: j.error };
@@ -1841,6 +1854,13 @@ $("problemCheck").onclick = async () => {
   if (!t) { toast("Describe the problem first, e.g. OneDrive won't sign in"); $("problemText").focus(); return; }
   S.problem = $("problemText").value; saveState();
   try { await queue("problem_check", { terms: t }, "Look into the customer's problem"); $("problemHint").textContent = "Looking into it (read-only, a minute or two). Then make the plan or Ask AI about it — both will use what it finds."; }
+  catch (e) { toast(e.message); }
+};
+$("stressBtn").onclick = async () => {
+  if (!S.token) { toast("Connect to a PC first"); return; }
+  const mins = $("stressMin").value, tgt = $("stressTarget").value;
+  if (!await ask({ title: `Stress the CPU for ${mins} min?`, facts: ["The PC will run hot and its fans will spin up", tgt === "all" ? "RAM is loaded too" : null, "It stops on its own at 97 C, or when you tap Stop"].filter(Boolean), note: "Fine on a healthy PC; on an already-overheating one, watch it. Nothing is changed.", ok: "Start" })) return;
+  try { await queue("stress_test", { minutes: mins, target: tgt }, "Stress test"); $("stressHint").textContent = "Running — see progress and temperature on the Fix tab."; show("jobs"); }
   catch (e) { toast(e.message); }
 };
 $("problemAsk").onclick = () => {

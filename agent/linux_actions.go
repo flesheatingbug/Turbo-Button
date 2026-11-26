@@ -66,6 +66,8 @@ func linuxRun(ctx context.Context, name string, env map[string]string, onLine fu
 		res, err = actSmartTest(ctx, env["PCM_device"], onLine)
 	case "problem_check":
 		res, err = actProblemCheck(ctx, env["PCM_terms"], onLine)
+	case "stress_test":
+		res, err = actStressTest(ctx, env, onLine)
 	case "disk_usage":
 		res = actDiskUsage(onLine)
 	case "dns_flush":

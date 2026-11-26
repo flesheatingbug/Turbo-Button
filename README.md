@@ -173,6 +173,8 @@ In the app, tap **Scan QR code** and point it at the PC's screen. The scan start
 <details open>
 <summary><b>🪟 Windows</b></summary>
 
+**Stress test:** load the CPU (or CPU + RAM) hard for 1–5 minutes to shake out overheating, thermal throttling or instability — watches the temperature and clock speed and stops early at 97 °C. Read-only.
+
 **Scan:** hardware and drive health (SMART, SSD wear, temperature), startup speed and what's slowing it down, blue screens with their likely cause, CPU and memory pressure, temperatures, junk files, startup apps, scheduled tasks, preinstalled bloat, installed programs, antivirus and Defender status, Windows Update status, restore points, problem devices, battery wear, and browser and network hijacks (search engine, extensions, forced policies, proxy, DNS, hosts file).
 
 **Optional deep checks** (read-only, 10–30 min): pending Windows and driver updates, whether a newer Windows 11 version is out, outdated programs (winget), system-file and Windows-image corruption (SFC/DISM verify), file-system errors (CHKDSK online), a Defender quick scan, and what's filling the disk.
@@ -211,6 +213,7 @@ In the app, tap **Scan QR code** and point it at the PC's screen. The scan start
 | Updates | pacman, apt, dnf or zypper, plus Flatpak, Snap and firmware (fwupd) |
 | Speed | Disable autostart apps (by a per-user override, so the system file is untouched); restart, enable or disable services; TRIM |
 | Health | SMART self-test, clear failed-service markers |
+| Stress test | Load the CPU (or CPU + RAM) for 1–5 min to find overheating, throttling or crashes; watches temperature and stops at 97 °C |
 | Adware | Reset the hosts file, remove forced browser policies (backups go in `/var/lib/turbobutton/backups`) |
 | Finish | DNS flush, restart or shut down the PC from your phone with a countdown |
 
