@@ -349,7 +349,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.11.1";
+const PAGE_VERSION = "0.11.2";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -726,6 +726,7 @@ function renderScan() {
     ${gbRow("CPU", `${sys.cpu || ""} · ${sys.cores || "?"}C/${sys.threads || "?"}T`)}
     ${gbRow("RAM", `${sys.ramGB} GB (${sys.freeRamGB} GB free)`)}
     ${gbRow("Uptime", `${sys.uptimeHours} h`)}
+    ${(s.remoteTools || []).map(x => `<div>${esc(x.tool)} ID</div><div><b>${esc(String(x.id).replace(/^(\d{1,3}?)((\d{3})+)$/, (m, a, b) => (a ? a + " " : "") + b.match(/\d{3}/g).join(" ")))}</b> <button class="b2 sm" data-copyid="${esc(x.id)}">Copy</button></div>`).join("")}
     ${gbRow("Installed", sys.installDate || "")}
     ${gbRow("Scanned", s.scannedAt || "")}
   </div></div>`;
@@ -785,6 +786,11 @@ function renderScan() {
     const inf = startupInfo(x);
     if (!await ask({ title: "Disable this startup app?", facts: [x.name].concat(inf.desc ? [inf.desc] : []), note: inf.advice === "keep" ? "This looks like part of the system or a driver. Turning it off may break something (sound, touchpad, tray, passwords…). Only disable it if you're sure." : "It stops launching when the PC starts. The app itself still works when opened.", ok: "Disable", danger: inf.advice === "keep" })) return;
     try { await (isLinux() ? queue("autostart_disable", { path: x.path }, "Disabled manually from scan") : queue("startup_disable", { location: x.location, name: x.name }, "Disabled manually from scan")); toast("Queued"); } catch (e) { toast(e.message); }
+  });
+  $("scanView").querySelectorAll("[data-copyid]").forEach(b => b.onclick = () => {
+    const t = b.dataset.copyid;
+    if (NATIVE && window.TurboNative.copyText) window.TurboNative.copyText(t); else if (navigator.clipboard) navigator.clipboard.writeText(t).catch(() => {});
+    toast("Copied " + t);
   });
   $("scanView").querySelectorAll("[data-sten]").forEach(b => b.onclick = async () => {
     const x = st[+b.dataset.sten];

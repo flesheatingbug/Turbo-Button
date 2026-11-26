@@ -45,6 +45,11 @@ func (a *Agent) prepareResume(port int) error {
 			return fmt.Errorf("copy agent: %w", err)
 		}
 	}
+	// The copy that restarts after the reboot needs the relay settings too (a conf file next to
+	// the original isn't next to the copy; settings built into the exe travel with it).
+	if c := confFile(); c != "" {
+		copyFile(c, filepath.Join(agentCopyDir(), "turbobutton.conf"))
+	}
 	if err := a.writeResumeState(port); err != nil {
 		return err
 	}

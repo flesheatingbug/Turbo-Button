@@ -1,5 +1,5 @@
 $r = [ordered]@{ scannedAt = (Get-Date).ToString('s'); errors = @() }
-$ListSections = 'gpu','volumes','physicalDisks','startup','scheduledTasks','services','apps','programs','office','securitySoftware','problemDevices','topProcesses'
+$ListSections = 'gpu','volumes','physicalDisks','startup','scheduledTasks','services','apps','programs','office','securitySoftware','problemDevices','topProcesses','remoteTools'
 # PCM_RESUME_AFTER: the agent re-runs the scan from after a section that hung (it skips that one).
 $script:skipUntil = $env:PCM_RESUME_AFTER
 # CIM calls that never answer (broken WMI/performance counters) must not hang the scan.
@@ -35,6 +35,32 @@ Section 'system' {
     signedInUser = $cs.UserName; agentRunningAs = "$env:USERDOMAIN\$env:USERNAME"
     partOfDomain = [bool]$cs.PartOfDomain; domain = if ($cs.PartOfDomain) { $cs.Domain } else { $null }
   }
+}
+
+# Remote-desktop IDs (AnyDesk, TeamViewer, RustDesk), read from their own config, so you can
+# connect without visiting the PC. IDs only; no passwords or other settings are read out.
+Section 'remoteTools' {
+  $ids = @()
+  $users = @(Get-ChildItem "$env:SystemDrive\Users" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+  $adConf = @("$env:ProgramData\AnyDesk\system.conf") + @(Get-ChildItem "$env:ProgramData\AnyDesk\*\system.conf" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) + @($users | ForEach-Object { "$_\AppData\Roaming\AnyDesk\system.conf" })
+  foreach ($f in $adConf) {
+    if (Test-Path -LiteralPath $f) {
+      $m = Select-String -LiteralPath $f -Pattern '^ad\.anynet\.id=(\d+)' -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($m) { $ids += [ordered]@{ tool = 'AnyDesk'; id = $m.Matches[0].Groups[1].Value; where = $f } }
+    }
+  }
+  foreach ($k in 'HKLM:\SOFTWARE\TeamViewer', 'HKLM:\SOFTWARE\WOW6432Node\TeamViewer') {
+    $v = (Get-ItemProperty $k -ErrorAction SilentlyContinue).ClientID
+    if ($v) { $ids += [ordered]@{ tool = 'TeamViewer'; id = "$v"; where = $k } }
+  }
+  $rdConf = @("$env:windir\ServiceProfiles\LocalService\AppData\Roaming\RustDesk\config\RustDesk.toml") + @($users | ForEach-Object { "$_\AppData\Roaming\RustDesk\config\RustDesk.toml" })
+  foreach ($f in $rdConf) {
+    if (Test-Path -LiteralPath $f) {
+      $m = Select-String -LiteralPath $f -Pattern "^\s*id\s*=\s*'?""?([0-9A-Za-z]+)" -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($m) { $ids += [ordered]@{ tool = 'RustDesk'; id = $m.Matches[0].Groups[1].Value; where = $f } }
+    }
+  }
+  $seen = @{}; foreach ($x in $ids) { $key = "$($x.tool)|$($x.id)"; if (-not $seen[$key]) { $seen[$key] = 1; $x } }
 }
 
 Section 'gpu' {

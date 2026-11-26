@@ -172,6 +172,7 @@ func linuxScan(ctx context.Context, onLine func(string)) map[string]any {
 		}
 	}
 	section("system", func() any { return scanSystem(ctx) })
+	section("remoteTools", func() any { return scanRemoteTools() })
 	section("gpu", func() any { return scanGPU(ctx) })
 	section("volumes", func() any { return scanVolumes(ctx) })
 	section("physicalDisks", func() any { return scanDisks(ctx) })
@@ -1054,4 +1055,50 @@ func scanSnapshots(ctx context.Context) any {
 		return map[string]any{"tool": "timeshift", "count": strings.Count(o, " > ")}
 	}
 	return map[string]any{"tool": "none", "count": 0}
+}
+
+// scanRemoteTools reads remote-desktop IDs (AnyDesk, TeamViewer, RustDesk) from their own
+// config files, so the technician can connect without visiting. IDs only.
+func scanRemoteTools() any {
+	var out []map[string]string
+	seen := map[string]bool{}
+	add := func(tool, id, where string) {
+		if id != "" && !seen[tool+id] {
+			seen[tool+id] = true
+			out = append(out, map[string]string{"tool": tool, "id": id, "where": where})
+		}
+	}
+	find := func(path string, rx *regexp.Regexp) string {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return ""
+		}
+		if m := rx.FindSubmatch(b); m != nil {
+			return string(m[1])
+		}
+		return ""
+	}
+	homes, _ := filepath.Glob("/home/*")
+	homes = append(homes, "/root")
+	ad := regexp.MustCompile(`(?m)^ad\.anynet\.id=(\d+)`)
+	for _, p := range append([]string{"/etc/anydesk/system.conf"}, prefixAll(homes, "/.anydesk/system.conf")...) {
+		add("AnyDesk", find(p, ad), p)
+	}
+	add("TeamViewer", find("/etc/teamviewer/global.conf", regexp.MustCompile(`ClientID\s*=\s*(\d+)`)), "/etc/teamviewer/global.conf")
+	rd := regexp.MustCompile(`(?m)^\s*id\s*=\s*['"]?([0-9A-Za-z]+)`)
+	for _, p := range prefixAll(homes, "/.config/rustdesk/RustDesk.toml") {
+		add("RustDesk", find(p, rd), p)
+	}
+	if out == nil {
+		return []map[string]string{}
+	}
+	return out
+}
+
+func prefixAll(dirs []string, suffix string) []string {
+	out := make([]string, len(dirs))
+	for i, d := range dirs {
+		out[i] = d + suffix
+	}
+	return out
 }
