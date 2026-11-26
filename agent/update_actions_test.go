@@ -18,6 +18,8 @@ func TestNewUpdateActions(t *testing.T) {
 		{"driver_updates", map[string]any{"mode": "check"}, true},
 		{"windows_update", map[string]any{"mode": "check", "drivers": true}, true},
 		{"feature_update", map[string]any{"mode": "install", "assistant": false}, true},
+		{"feature_update", map[string]any{"mode": "install", "bypass": true, "iso": `D:\Medicat\Win11_26H2.iso`}, true},
+		{"feature_update", map[string]any{"mode": "install", "bypass": true, "iso": "not a path"}, false},
 		{"defender_remove", map[string]any{}, true},
 	} {
 		var a *Action

@@ -135,11 +135,13 @@ var Catalog = []Action{
 			{Name: "oemtool", Type: "bool", Opt: true, Desc: "install the maker's updater if missing"}}},
 
 	{ID: "feature_update", Title: "Upgrade to the newest Windows 11 version", Category: "updates", Risk: "medium", Long: true, Modifies: true, TimeoutMin: 240, Reboot: true,
-		Desc: "mode=check compares this PC's Windows version (e.g. 25H2) with the newest yearly release (read-only). mode=install briefly pins Windows Update to that version so it offers it (a quick enablement package on 24H2/25H2), installs it and removes the pin; needs a restart. assistant=true falls back to Microsoft's Windows 11 Installation Assistant (full in-place upgrade, keeps files and programs, 1h+) if Windows Update won't offer it. Leaves PCs managed by WSUS/Intune alone and never overrides Microsoft's compatibility holds.",
+		Desc: "mode=check compares this PC's Windows version (e.g. 25H2) with the newest yearly release (read-only). mode=install briefly pins Windows Update to that version so it offers it (a quick enablement package on 24H2/25H2), installs it and removes the pin; needs a restart. assistant=true falls back to Microsoft's Windows 11 Installation Assistant (full in-place upgrade, keeps files and programs, 1h+) if Windows Update won't offer it. bypass=true (technician's call, for a PC that fails Microsoft's TPM 2.0 / Secure Boot / CPU requirements) sets the documented override keys and, with iso set to a Windows 11 ISO path, upgrades from it with the hardware check skipped (keeps files and programs); without an ISO it relies on the Installation Assistant, which only covers TPM 1.2 / unsupported-CPU PCs. Leaves PCs managed by WSUS/Intune alone and never overrides Microsoft's compatibility holds.",
 		Params: []Param{
 			{Name: "mode", Type: "enum", Enum: []string{"check", "install"}, Desc: "check or install"},
 			{Name: "version", Type: "string", Opt: true, Pattern: `^(\d\dH[12])?$`, Desc: "target version like 26H2 (blank = newest)"},
-			{Name: "assistant", Type: "bool", Opt: true, Desc: "fall back to the Installation Assistant"}}},
+			{Name: "assistant", Type: "bool", Opt: true, Desc: "fall back to the Installation Assistant"},
+			{Name: "bypass", Type: "bool", Opt: true, Desc: "skip Microsoft's hardware requirements (unsupported PC)"},
+			{Name: "iso", Type: "string", Opt: true, Pattern: `^(|[A-Za-z]:\\[^\r\n"|<>]{1,250}\.[Ii][Ss][Oo])$`, Desc: "path to a Windows 11 ISO for the bypass upgrade"}}},
 
 	{ID: "app_updates", Title: "Update installed programs (winget)", Category: "updates", Risk: "low", Long: true, TimeoutMin: 120,
 		Desc:   "mode=list shows programs with updates; mode=install silently updates all of them with Windows Package Manager. Needs App Installer (winget).",

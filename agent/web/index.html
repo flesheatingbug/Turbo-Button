@@ -353,7 +353,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.11.5";
+const PAGE_VERSION = "0.11.6";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -1002,7 +1002,7 @@ Rules:
 - Apps or startup items the customer may actively use (chat, music, cloud sync, VPN, games, printers, peripherals, OEM audio/touchpad tools) → askCustomer true. Clear junk (OEM trialware, updaters, toolbars, ads) → fine to propose.
 - Prefer fixing root causes found in events/health (failing disk, crashes, low space) over cosmetic tweaks. Flag hardware problems in findings/manual.
 - Put long actions (sfc, dism_restore, defender full scan) last, and dism_restore before sfc if corruption is suspected.
-- Updates: propose windows_update {mode:"install"} when updates are stale, driver_updates {mode:"install", oemtool:true} when there are problem devices or old graphics drivers (instead of telling the technician to fetch drivers by hand), feature_update {mode:"install"} when Windows 11's displayVersion is older than the newest yearly release (${latestWin11()}), and app_updates {mode:"install"} when winget is available. Use reset_windows_update first only if updates haven't installed for 60+ days.
+- Updates: propose windows_update {mode:"install"} when updates are stale, driver_updates {mode:"install", oemtool:true} when there are problem devices or old graphics drivers (instead of telling the technician to fetch drivers by hand), feature_update {mode:"install"} when Windows 11's displayVersion is older than the newest yearly release (${latestWin11()}) — add bypass:true ONLY if the technician's notes or the reported problem explicitly ask to skip Microsoft's hardware requirements (TPM/Secure Boot/CPU), never on your own, askCustomer true; and app_updates {mode:"install"} when winget is available. Use reset_windows_update first only if updates haven't installed for 60+ days.
 - av_remove (exact name from scan.securitySoftware) for expired/preinstalled antivirus trials or when two antiviruses are installed: risk high, askCustomer true, keep one. Never leave the PC without protection; Defender takes over after the restart. Prefer av_remove over program_uninstall for security software.
 - office_remove (exact name from scan.office) only for duplicate Office versions, expired trials, or a broken Office before a reinstall: risk high, askCustomer true. Mention in "manual" that the customer needs their Microsoft account/product key to reinstall.
 - program_uninstall only for clear junk/trialware/adware (askCustomer true unless it is obviously malicious); use the exact name from scan.programs. If uninstall is "none"/"interactive" with no winget, put it in "manual" instead.
@@ -1408,6 +1408,7 @@ function quickPlanWin(s) {
   const du2 = dr("driver_updates");
   if (du2 && du2.found > 0 && !P.some(p => p.action === "driver_updates")) prop("driver_updates", { mode: "install", oemtool: true }, `${du2.found} newer driver(s) found by the deep check.`);
   const fu = dr("feature_update");
+  if (fu && fu.os === "Windows 10") M.push({ title: "Windows 10 PC", detail: "Windows 10 is out of support. It can upgrade to Windows 11 free. If it fails Microsoft's TPM/Secure Boot/CPU check, run \"Upgrade to Windows 11\" with bypass on — point it at a Windows 11 ISO (e.g. on your Medicat USB) for a PC with no TPM." });
   if (fu && fu.upToDate) P.splice(0, P.length, ...P.filter(p => p.action !== "feature_update"));
   if (fu && fu.managed) { P.splice(0, P.length, ...P.filter(p => p.action !== "feature_update")); find("info", "Windows version is managed", "Windows Update here is controlled by WSUS/Intune or a policy, so Turbo Button leaves the version alone."); }
   const au = dr("app_updates");
@@ -1739,7 +1740,7 @@ function resultLine(j) {
   if (j.action === "windows_update") bits.push(r.mode === "install" ? `${r.installed || 0} installed${r.failed ? ", " + r.failed + " failed" : ""}` : `${r.found || 0} update(s) available`);
   if (j.action === "defender_remove") bits.push(`${r.removed || 0} removed` + ((r.stillActive || []).length ? ` · ${r.stillActive.length} still present` : "") + ((r.allowed || []).length ? ` · ${r.allowed.length} allowed, left alone` : ""));
   if (j.action === "driver_updates") bits.push((r.mode === "install" ? `${r.installed || 0} driver(s) installed${r.failed ? ", " + r.failed + " failed" : ""}` : `${r.found || 0} newer driver(s)`) + (r.oem ? ` · ${r.oem.tool}: ${r.oem.note}` : r.oemTool && !r.oemInstalled ? ` · ${r.oemTool} not installed` : ""));
-  if (j.action === "feature_update") bits.push(r.upToDate ? `already on ${r.current}` : r.managed ? "managed by IT, left alone" : r.mode === "install" ? (r.result === "installed" ? `${r.target} installed · restart to finish` : r.result === "not offered" ? `${r.target} not offered by Windows Update yet` : `${r.target}: ${r.result}`) : `${r.current} → ${r.target} available`);
+  if (j.action === "feature_update") bits.push((r.upToDate ? `already on ${r.current}` : r.managed ? "managed by IT, left alone" : r.mode === "install" ? (r.result === "installed" ? `${r.target} installed · restart to finish` : r.result === "not offered" ? `${r.target} not offered by Windows Update yet` : `${r.target}: ${r.result}`) : `${r.current} → ${r.target} available`) + (r.bypass ? " · requirements bypassed" : ""));
   if (j.action === "app_updates") bits.push(r.mode === "install" ? `${r.installed || 0} program(s) updated` : `${r.available || 0} program update(s) available`);
   if (j.action === "program_uninstall" && r.removed) bits.push(`removed (${r.method})`);
   if (j.action === "av_remove" && r.removed) bits.push("removed · " + (r.defenderActive ? "Defender protecting" : "restart to switch Defender on"));

@@ -33,7 +33,7 @@ var iconPNG []byte
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.11.5"
+const Version = "0.11.6"
 
 type Job struct {
 	ID        int             `json:"id"`

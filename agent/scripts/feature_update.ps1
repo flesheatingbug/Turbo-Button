@@ -4,6 +4,9 @@
 # "enablement package" on 24H2/25H2), installs it and removes the pin again. If Windows Update
 # still won't offer it and PCM_assistant=1, runs Microsoft's Windows 11 Installation Assistant
 # (signature checked) for a full in-place upgrade. Never touches safeguard holds.
+# PCM_bypass=1 (technician's call, for a PC that fails Microsoft's TPM/Secure Boot/CPU check):
+# sets the documented override keys and, if PCM_iso points to a Windows 11 ISO, does an in-place
+# upgrade from it with the hardware check skipped, keeping files and programs.
 if (Clear-TurboPin) { Say 'Removed a version pin left by an earlier run that was cut short.' }
 $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
 $build = [int]$cv.CurrentBuild
@@ -24,6 +27,50 @@ if ($managed) {
   Out-Result ($base + @{ result = 'managed' }); return
 }
 if ($env:PCM_mode -ne 'install') { Out-Result ($base + @{ result = 'upgrade available' }); return }
+
+$bypass = $env:PCM_bypass -eq '1'
+if ($bypass) {
+  Say 'Setting the documented overrides so Setup allows this PC despite the Windows 11 hardware requirements.'
+  New-Item 'HKLM:\SYSTEM\Setup\MoSetup' -Force | Out-Null
+  New-ItemProperty 'HKLM:\SYSTEM\Setup\MoSetup' -Name AllowUpgradesWithUnsupportedTPMOrCPU -Value 1 -PropertyType DWord -Force | Out-Null
+  New-Item 'HKLM:\SYSTEM\Setup\LabConfig' -Force | Out-Null
+  foreach ($n in 'BypassTPMCheck', 'BypassSecureBootCheck', 'BypassCPUCheck', 'BypassRAMCheck', 'BypassStorageCheck') {
+    New-ItemProperty 'HKLM:\SYSTEM\Setup\LabConfig' -Name $n -Value 1 -PropertyType DWord -Force | Out-Null
+  }
+  $iso = "$env:PCM_iso"
+  if ($iso) {
+    if (-not (Test-Path -LiteralPath $iso)) { throw "Can't find the ISO at $iso." }
+    Say "Mounting $iso ..."
+    $before = (Get-Volume).DriveLetter
+    $img = Mount-DiskImage -ImagePath $iso -PassThru -ErrorAction Stop
+    Start-Sleep 3
+    $drive = ($img | Get-DiskImage | Get-Volume).DriveLetter
+    if (-not $drive) { $drive = ((Get-Volume).DriveLetter | Where-Object { $_ -and $_ -notin $before }) | Select-Object -First 1 }
+    try {
+      $setup = "${drive}:\setup.exe"
+      if (-not (Test-Path $setup)) { throw "No setup.exe on the mounted ISO ($setup). Is it a Windows 11 ISO?" }
+      $sig = Get-AuthenticodeSignature $setup
+      if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw "setup.exe on the ISO isn't signed by Microsoft ($($sig.Status)); not run." }
+      $logDir = Join-Path $env:TEMP 'turbo-win11'; New-Item -ItemType Directory -Force $logDir | Out-Null
+      Say 'Starting the in-place upgrade from the ISO (hardware check skipped via /product server). Files and programs are kept. This takes a while.'
+      # /product server makes Setup skip the Windows 11 client hardware appraisal while still doing a client upgrade.
+      $p = Start-Process $setup -ArgumentList '/auto', 'upgrade', '/product', 'server', '/dynamicupdate', 'disable', '/eula', 'accept', '/noreboot', '/copylogs', $logDir -PassThru -Wait
+      $t0 = Get-Date
+      while (Get-Process -Name SetupHost, SetupPrep -ErrorAction SilentlyContinue) {
+        if ([int]((Get-Date) - $t0).TotalSeconds % 300 -lt 15) { Say ('Still upgrading... ' + [int]((Get-Date) - $t0).TotalMinutes + ' min') }
+        Start-Sleep 15
+      }
+      $pending = (Test-Path "$env:SystemDrive\`$WINDOWS.~BT\Sources\SetupPlatform.exe") -or (Test-Path 'HKLM:\SYSTEM\Setup\MoSetup\Volatile')
+      $installed = $pending
+      if ($installed) { Say "Upgrade staged from the ISO. Windows 11 $target finishes during the next restart (20-40 min)." }
+      else { Say "Setup exited (code $($p.ExitCode)) without staging. Check $logDir\\*.log (setupact.log)." }
+    } finally { Dismount-DiskImage -ImagePath $iso -ErrorAction SilentlyContinue | Out-Null }
+    Out-Result ($base + @{ result = $(if ($installed) { 'installed' } else { 'failed' }); method = 'ISO (/product server)'; bypass = $true; rebootRequired = $true })
+    return
+  }
+  Say 'No ISO given, so trying the Installation Assistant with the overrides. This works when the PC has TPM 1.2 and Secure Boot but an unsupported CPU. A PC with no TPM or no Secure Boot needs an ISO (point the step at a Windows 11 ISO, e.g. on your Medicat USB).'
+  $env:PCM_assistant = '1'
+}
 
 function Find-Feature($session) {
   $res = $session.CreateUpdateSearcher().Search("IsInstalled=0 and IsHidden=0 and Type='Software'")
@@ -86,4 +133,4 @@ if (-not $installed -and $env:PCM_assistant -eq '1') {
   if ($installed) { Say "The upgrade is staged. Windows 11 $target finishes installing during the next restart (allow 20-40 minutes)." }
   else { Say "The Installation Assistant stopped (exit code $($p.ExitCode)) without staging the upgrade. Its logs are in $dir. The most common reason is that the PC doesn't meet Windows 11's requirements (TPM 2.0, Secure Boot, supported CPU)." }
 }
-Out-Result ($base + @{ result = $(if ($installed) { 'installed' } elseif ($feature) { 'failed' } else { 'not offered' }); method = $how; rebootRequired = $reboot })
+Out-Result ($base + @{ result = $(if ($installed) { 'installed' } elseif ($feature) { 'failed' } else { 'not offered' }); method = $how; bypass = $bypass; rebootRequired = $reboot })
