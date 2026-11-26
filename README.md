@@ -191,7 +191,7 @@ In the app, tap **Scan QR code** and point it at the PC's screen. The scan start
 | Security | Defender signature update, quick/full/offline scans, remove threats Defender found that are still on the PC |
 | The customer's problem | Type what's wrong ("OneDrive won't sign in"): **Look into it** collects matching errors from the last week, the related programs, services and processes, and for sign-in problems the account state, clock, proxy and whether Microsoft's servers answer. The plan, deep checks and AI answers then put that problem first |
 | Updates | Windows Update, driver updates (Windows Update plus Dell Command Update / Lenovo System Update / HP Image Assistant, installed for you on Dell and Lenovo), upgrade to the newest Windows 11 version (e.g. 25H2 → 26H2), upgrade an unsupported PC to Windows 11 past Microsoft's TPM/Secure Boot/CPU check (technician's choice; from a Windows 11 ISO for a no-TPM PC), update all programs via winget |
-| Finish | Restart with a countdown (or cancel it) |
+| Finish | Restart or shut down the PC from your phone, with a countdown (or cancel it); End closes just the app on the PC |
 
 </details>
 
@@ -212,7 +212,7 @@ In the app, tap **Scan QR code** and point it at the PC's screen. The scan start
 | Speed | Disable autostart apps (by a per-user override, so the system file is untouched); restart, enable or disable services; TRIM |
 | Health | SMART self-test, clear failed-service markers |
 | Adware | Reset the hosts file, remove forced browser policies (backups go in `/var/lib/turbobutton/backups`) |
-| Finish | DNS flush, restart with a countdown |
+| Finish | DNS flush, restart or shut down the PC from your phone with a countdown |
 
 The app spots a Linux PC by itself and switches to Linux rules, AI instructions and deep checks.
 

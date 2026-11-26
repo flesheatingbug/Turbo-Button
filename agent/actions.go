@@ -151,8 +151,12 @@ var Catalog = []Action{
 		Desc:   "Restarts after a countdown shown to the user. Ends the session (phone disconnects) - always the LAST action.",
 		Params: []Param{{Name: "minutes", Type: "enum", Enum: []string{"1", "5"}, Desc: "countdown"}}},
 
-	{ID: "cancel_restart", Title: "Cancel a pending restart", Category: "updates", Risk: "low",
-		Desc: "Cancels a restart started by restart_pc."},
+	{ID: "shutdown_pc", Title: "Shut down the PC", Category: "updates", Risk: "medium", Reboot: true,
+		Desc:   "Powers the PC off after a countdown shown to the user. Ends the session (phone disconnects) - always the LAST action. Not for routine maintenance; only when the technician asks.",
+		Params: []Param{{Name: "minutes", Type: "enum", Enum: []string{"1", "5"}, Desc: "countdown"}}},
+
+	{ID: "cancel_restart", Title: "Cancel a pending restart or shutdown", Category: "updates", Risk: "low",
+		Desc: "Cancels a restart or shutdown started by restart_pc or shutdown_pc."},
 
 	// ---- Junk & adware ----
 	{ID: "program_uninstall", Title: "Uninstall a program", Category: "junk", Risk: "medium", Long: true, Modifies: true, TimeoutMin: 30,

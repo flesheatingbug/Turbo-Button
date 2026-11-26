@@ -33,7 +33,7 @@ var iconPNG []byte
 //go:embed web/screen.html
 var screenHTML []byte
 
-const Version = "0.11.6"
+const Version = "0.11.7"
 
 type Job struct {
 	ID        int             `json:"id"`
@@ -263,7 +263,7 @@ func (a *Agent) worker() {
 // stoppable: read-only jobs can be stopped halfway. Anything that changes the system can't:
 // killing an update, uninstall or repair halfway could leave the PC broken.
 func (j *Job) stoppable() bool {
-	return !j.modifies && j.Action != "restore_point" && j.Action != "restart_pc" && j.Action != "cancel_restart"
+	return !j.modifies && j.Action != "restore_point" && j.Action != "restart_pc" && j.Action != "shutdown_pc" && j.Action != "cancel_restart"
 }
 
 func (a *Agent) run(j *Job) {

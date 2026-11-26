@@ -81,9 +81,13 @@ func linuxRun(ctx context.Context, name string, env map[string]string, onLine fu
 		m := env["PCM_minutes"]
 		err = stream(ctx, onLine, nil, "shutdown", "-r", "+"+m, "Turbo Button: restarting in "+m+" minute(s) to finish the repairs. Please save your work.")
 		res = map[string]any{"note": "Restarting in " + m + " min. The session ends when the PC restarts."}
+	case "shutdown_pc":
+		m := env["PCM_minutes"]
+		err = stream(ctx, onLine, nil, "shutdown", "-h", "+"+m, "Turbo Button: shutting down in "+m+" minute(s). Please save your work.")
+		res = map[string]any{"note": "Shutting down in " + m + " min. The session ends when the PC powers off."}
 	case "cancel_restart":
 		err = stream(ctx, onLine, nil, "shutdown", "-c")
-		res = map[string]any{"note": "Restart cancelled."}
+		res = map[string]any{"note": "Restart or shutdown cancelled."}
 	default:
 		return nil, fmt.Errorf("%s isn't available on Linux", name)
 	}
