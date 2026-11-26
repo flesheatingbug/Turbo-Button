@@ -349,7 +349,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.11.0";
+const PAGE_VERSION = "0.11.1";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -697,7 +697,13 @@ function validate(p) {
   return "";
 }
 async function queue(action, params, reason) {
-  const j = await api("/api/apply", { method: "POST", body: JSON.stringify({ action, params, reason }) });
+  let j;
+  try { j = await api("/api/apply", { method: "POST", body: JSON.stringify({ action, params, reason }) }); }
+  catch (e) {
+    // The phone app is newer than Turbo Button on the PC.
+    if (/unknown action/i.test(e.message)) throw new Error(`Turbo Button on ${S.name || "this PC"} is an older version without this. Close it on the PC and open it again: it updates itself when it starts.`);
+    throw e;
+  }
   pollSoon(); return j;
 }
 
