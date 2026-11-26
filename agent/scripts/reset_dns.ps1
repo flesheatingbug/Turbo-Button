@@ -6,5 +6,5 @@ foreach ($a in @(Get-NetAdapter -ErrorAction Stop | Where-Object Status -eq 'Up'
   $changes += "$($a.Name): $before -> $after (automatic)"
   Say $changes[-1]
 }
-Clear-DnsClientCache
+Say 'Clearing the DNS cache...'; & "$env:windir\System32\ipconfig.exe" /flushdns | Out-Null  # not Clear-DnsClientCache: it goes through WMI, which hangs on PCs where WMI is damaged
 Out-Result @{ changes = $changes }
