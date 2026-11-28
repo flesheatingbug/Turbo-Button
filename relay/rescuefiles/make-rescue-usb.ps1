@@ -12,7 +12,7 @@ param([Parameter(Mandatory=$true)][string]$Iso)
 $ErrorActionPreference = 'Stop'
 $self = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole('Administrator')) { throw "Run this in an Administrator PowerShell." }
-if (-not (Test-Path $Iso)) { throw "ISO not found: $Iso" }
+if (-not (Test-Path $Iso)) { throw "ISO not found: $Iso  — download a SystemRescue amd64 ISO from https://www.system-rescue.org/Download/ and pass its path with -Iso" }
 if (-not (Test-Path (Join-Path $self 'turbo-rescue.sh'))) { throw "missing turbo-rescue.sh next to this script" }
 $agent = Join-Path $self 'turbobutton'
 if (-not (Test-Path $agent)) {

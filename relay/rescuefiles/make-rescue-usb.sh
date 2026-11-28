@@ -23,8 +23,11 @@ while [ $# -gt 0 ]; do case "$1" in
 esac; done
 [ -n "$DEV" ] && [ -n "$ISO" ] || usage
 [ "$(id -u)" = 0 ] || exec sudo -- "$0" -d "$DEV" -i "$ISO"
-[ -b "$DEV" ] || die "$DEV is not a block device"
-[ -f "$ISO" ] || die "ISO not found: $ISO"
+[ -b "$DEV" ] || die "$DEV is not a block device. Pick a USB disk from: lsblk -dpo NAME,SIZE,MODEL,TRAN"
+if [ "$(lsblk -dno TYPE "$DEV" 2>/dev/null)" = part ]; then
+  die "$DEV is a partition. Use the WHOLE disk instead, e.g. ${DEV%[0-9]*} (not ${DEV}). The script wipes and repartitions the whole stick."
+fi
+[ -f "$ISO" ] || die "ISO not found: $ISO  — download a SystemRescue amd64 ISO from https://www.system-rescue.org/Download/ and pass its path with -i"
 [ -f "$SELF/turbo-rescue.sh" ] || die "missing turbo-rescue.sh next to this script"
 REL="https://github.com/flesheatingbug/Turbo-Button/releases/download/latest"
 if [ ! -f "$SELF/turbobutton" ]; then
