@@ -79,6 +79,12 @@ var LinuxCatalog = []Action{
 		Desc:   "Short drive self-test (about 2 minutes) with smartctl, then reports the result. Needs smartmontools.",
 		Params: []Param{{Name: "device", Type: "string", Pattern: `^/dev/(sd[a-z]{1,2}|nvme[0-9]{1,2}n[0-9]{1,2}|hd[a-z]|vd[a-z])$`, Desc: "Disk, e.g. /dev/sda or /dev/nvme0n1"}}},
 
+	{ID: "disk_test", Title: "Drive surface test (HDD/SSD)", Category: "diagnostics", Risk: "low", Long: true, TimeoutMin: 90,
+		Desc: "Read-only surface scan of the drive(s) to find unreadable sectors and slow regions - a failing HDD/SSD that SMART can miss. mode=sample spans the whole drive in a few minutes; mode=full reads every sector (can take hours). Never writes. Can be stopped.",
+		Params: []Param{
+			{Name: "mode", Type: "enum", Enum: []string{"sample", "full"}, Opt: true, Desc: "sample (fast) or full"},
+			{Name: "device", Type: "string", Opt: true, Pattern: `^(|/dev/[a-z0-9]+|\\\\\.\\PHYSICALDRIVE[0-9]+)$`, Desc: "one drive (blank = all)"}}},
+
 	{ID: "stress_test", Title: "Stress test (CPU)", Category: "diagnostics", Risk: "medium", Long: true, TimeoutMin: 12,
 		Desc: "Read-only. Loads the CPU (target=cpu) or CPU and RAM (target=all) hard for minutes, watching temperature and clock speed to find overheating, throttling or instability. Stops early if the CPU reaches 97 C. Can be stopped at any time. Not for routine maintenance; the technician runs it on request.",
 		Params: []Param{
@@ -86,15 +92,15 @@ var LinuxCatalog = []Action{
 			{Name: "target", Type: "enum", Enum: []string{"cpu", "all"}, Opt: true, Desc: "cpu or cpu+ram"}}},
 
 	{ID: "rescue_clear_password", Title: "Clear a Windows password (offline)", Category: "security", Risk: "high", Modifies: true, TimeoutMin: 10,
-		Desc: "Rescue mode. Blanks a LOCAL Windows account's password on the offline disk (chntpw). Cannot show the old password, only clear it; cannot unlock a Microsoft account or BitLocker. root = the Windows path from the rescue scan.",
+		Desc:   "Rescue mode. Blanks a LOCAL Windows account's password on the offline disk (chntpw). Cannot show the old password, only clear it; cannot unlock a Microsoft account or BitLocker. root = the Windows path from the rescue scan.",
 		Params: []Param{{Name: "root", Type: "string", Pattern: `^/[^\x00]{1,250}$`, Desc: "Windows root (from the scan)"}, {Name: "user", Type: "string", Pattern: `^[^\r\n:]{1,64}$`, Desc: "account name"}}},
 
 	{ID: "rescue_clear_linux_password", Title: "Clear a Linux password (offline)", Category: "security", Risk: "high", Modifies: true, TimeoutMin: 10,
-		Desc: "Rescue mode. Blanks an account's password in an offline Linux install's /etc/shadow (default root). root = that Linux root's mount path.",
+		Desc:   "Rescue mode. Blanks an account's password in an offline Linux install's /etc/shadow (default root). root = that Linux root's mount path.",
 		Params: []Param{{Name: "root", Type: "string", Pattern: `^/[^\x00]{1,250}$`, Desc: "Linux root mount"}, {Name: "user", Type: "string", Opt: true, Pattern: `^[a-z_][a-z0-9_-]{0,31}$`, Desc: "user (blank = root)"}}},
 
 	{ID: "rescue_restore_registry", Title: "Restore registry from backup (offline)", Category: "repair", Risk: "high", Modifies: true, Reboot: true, TimeoutMin: 10,
-		Desc: "Rescue mode. Copies intact hives from Windows\\System32\\config\\RegBack over the live hives - the standard fix for a corrupt/0-byte SYSTEM hive stopping boot. Backs up the current ones first. root = the Windows path from the scan.",
+		Desc:   "Rescue mode. Copies intact hives from Windows\\System32\\config\\RegBack over the live hives - the standard fix for a corrupt/0-byte SYSTEM hive stopping boot. Backs up the current ones first. root = the Windows path from the scan.",
 		Params: []Param{{Name: "root", Type: "string", Pattern: `^/[^\x00]{1,250}$`, Desc: "Windows root (from the scan)"}}},
 
 	{ID: "rescue_scan", Title: "Rescue scan (offline Windows)", Category: "diagnostics", Risk: "low", Long: true, TimeoutMin: 20,

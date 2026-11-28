@@ -72,6 +72,9 @@ func mockRun(ctx context.Context, name string, env map[string]string, onLine fun
 	if name == "shutdown_pc" {
 		return json.RawMessage(`{"note":"Shutting down in ` + env["PCM_minutes"] + ` min (simulated)."}`), nil
 	}
+	if name == "disk_test" {
+		return json.RawMessage(`{"mode":"sample","drives":[{"device":"/dev/sda","model":"Samsung SSD 870","kind":"SSD","size":"465 GB","scannedGB":1.2,"readErrors":0,"slowRegions":0,"minMBps":410,"avgMBps":520,"verdict":"healthy","mode":"sample"}]}`), nil
+	}
 	if name == "stress_test" {
 		return json.RawMessage(`{"target":"` + env["PCM_target"] + `","requestedSec":60,"cores":8,"idleTempC":44,"maxTempC":82,"tempAvailable":true,"stoppedEarly":false,"verdict":"stable","note":"Held up for the full run (max 82 C)."}`), nil
 	}

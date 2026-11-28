@@ -124,6 +124,12 @@ var Catalog = []Action{
 			{Name: "mode", Type: "enum", Enum: []string{"check", "install"}, Desc: "check or install"},
 			{Name: "drivers", Type: "bool", Desc: "include driver updates"}}},
 
+	{ID: "disk_test", Title: "Drive surface test (HDD/SSD)", Category: "diagnostics", Risk: "low", Long: true, TimeoutMin: 90,
+		Desc: "Read-only surface scan of the drive(s) to find unreadable sectors and slow regions - a failing HDD/SSD that SMART can miss. mode=sample spans the whole drive in a few minutes; mode=full reads every sector (can take hours). Never writes. Can be stopped.",
+		Params: []Param{
+			{Name: "mode", Type: "enum", Enum: []string{"sample", "full"}, Opt: true, Desc: "sample (fast) or full"},
+			{Name: "device", Type: "string", Opt: true, Pattern: `^(|/dev/[a-z0-9]+|\\\\\.\\PHYSICALDRIVE[0-9]+)$`, Desc: "one drive (blank = all)"}}},
+
 	{ID: "stress_test", Title: "Stress test (CPU)", Category: "diagnostics", Risk: "medium", Long: true, TimeoutMin: 12,
 		Desc: "Read-only. Loads the CPU (target=cpu) or CPU and RAM (target=all) hard for minutes, watching temperature and clock speed to find overheating, throttling or instability. Stops early if the CPU reaches 97 C. Can be stopped at any time. Not for routine maintenance; the technician runs it on request.",
 		Params: []Param{

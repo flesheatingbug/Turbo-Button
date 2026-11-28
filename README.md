@@ -214,6 +214,7 @@ In the app, tap **Scan QR code** and point it at the PC's screen. The scan start
 | Speed | Disable autostart apps (by a per-user override, so the system file is untouched); restart, enable or disable services; TRIM |
 | Health | SMART self-test, clear failed-service markers |
 | Stress test | Load the CPU (or CPU + RAM) for 1–5 min to find overheating, throttling or crashes; watches temperature and stops at 97 °C |
+| Drive test | Read-only surface scan of each HDD/SSD to find bad sectors and slow regions SMART can miss (quick or full) |
 | Adware | Reset the hosts file, remove forced browser policies (backups go in `/var/lib/turbobutton/backups`) |
 | Finish | DNS flush, restart or shut down the PC from your phone with a countdown |
 

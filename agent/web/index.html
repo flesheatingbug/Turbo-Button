@@ -272,6 +272,11 @@
         <select id="stressTarget" style="width:auto"><option value="cpu" selected>CPU</option><option value="all">CPU + RAM</option></select>
         <button class="b2" id="stressBtn">Start</button>
       </div>
+      <div class="row" style="flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px">
+        <label class="mut">Drives:</label>
+        <button class="b2" id="diskQuick">Quick surface scan</button>
+        <button class="b2" id="diskFull">Full read test</button>
+      </div>
       <div class="mut" id="stressHint" style="margin-top:6px"></div>
     </div>
     <div class="card">
@@ -374,7 +379,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.12.0";
+const PAGE_VERSION = "0.12.1";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -1811,6 +1816,7 @@ function resultLine(j) {
   if (r.detections) bits.push(r.detections.length + " detection(s)");
   if (r.problemsFound != null) bits.push(r.problemsFound ? "problems found" : "no problems");
   if (j.action === "windows_update") bits.push(r.mode === "install" ? `${r.installed || 0} installed${r.failed ? ", " + r.failed + " failed" : ""}` : `${r.found || 0} update(s) available`);
+  if (j.action === "disk_test") bits.push((r.drives || []).map(d => `${d.device}: ${d.verdict}` + (d.readErrors ? ` (${d.readErrors} err)` : "")).join(" · ") || "no drives");
   if (j.action === "stress_test") bits.push(`${({stable:"stable",["hot but held"]:"hot but held",overheated:"OVERHEATED — stopped early",throttled:"throttled"})[r.verdict] || r.verdict}` + (r.tempAvailable ? `, max ${r.maxTempC} C` : "") + (r.minClockPct != null && r.minClockPct < 100 ? `, clock down to ${r.minClockPct}%` : ""));
   if (j.action === "defender_remove") bits.push(`${r.removed || 0} removed` + ((r.stillActive || []).length ? ` · ${r.stillActive.length} still present` : "") + ((r.allowed || []).length ? ` · ${r.allowed.length} allowed, left alone` : ""));
   if (j.action === "driver_updates") bits.push((r.mode === "install" ? `${r.installed || 0} driver(s) installed${r.failed ? ", " + r.failed + " failed" : ""}` : `${r.found || 0} newer driver(s)`) + (r.oem ? ` · ${r.oem.tool}: ${r.oem.note}` : r.oemTool && !r.oemInstalled ? ` · ${r.oemTool} not installed` : ""));
@@ -1879,7 +1885,7 @@ function renderJobs() {
 const DEEP = [["windows_update", { mode: "check", drivers: true }], ["driver_updates", { mode: "check" }], ["feature_update", { mode: "check" }], ["app_updates", { mode: "list" }], ["disk_usage", {}], ["dism_check", {}], ["sfc_verify", {}], ["chkdsk_scan", { drive: "C" }], ["defender_scan", { type: "quick" }]];
 const DEEP_LINUX = [["updates_check", {}], ["disk_usage", {}]];
 const deepList = () => isLinux() ? DEEP_LINUX.concat((S.scan?.physicalDisks || []).filter(d => d.health && !/unknown/.test(d.health)).map(d => ["smart_test", { device: d.device }])) : DEEP;
-const isDeepJob = (j) => j.action === "smart_test" || j.action === "problem_check" || j.action === "stress_test" || DEEP.concat(DEEP_LINUX).some(([a, p]) => a === j.action && Object.entries(p).every(([k, v]) => String(j.params?.[k]) === String(v)));
+const isDeepJob = (j) => j.action === "smart_test" || j.action === "problem_check" || j.action === "stress_test" || j.action === "disk_test" || DEEP.concat(DEEP_LINUX).some(([a, p]) => a === j.action && Object.entries(p).every(([k, v]) => String(j.params?.[k]) === String(v)));
 function deepResults() {
   const out = {};
   for (const j of allJobs()) if (isDeepJob(j) && (j.status === "done" || j.status === "failed")) out[j.action === "smart_test" ? "smart_test " + j.params?.device : j.action] = { status: j.status, result: j.result, error: j.error };
@@ -1915,6 +1921,14 @@ $("stressBtn").onclick = async () => {
   try { await queue("stress_test", { minutes: mins, target: tgt }, "Stress test"); $("stressHint").textContent = "Running — see progress and temperature on the Fix tab."; show("jobs"); }
   catch (e) { toast(e.message); }
 };
+async function diskTest(mode) {
+  if (!S.token) { toast("Connect to a PC first"); return; }
+  if (!await ask({ title: mode === "full" ? "Full read test of every drive?" : "Quick surface scan of every drive?", facts: ["Reads the drive to find bad sectors and slow spots", "Read-only — nothing is written or changed", mode === "full" ? "Full test reads every sector — can take hours on a big HDD" : "Quick scan spans the whole drive in a few minutes"].filter(Boolean), note: "Tap Stop on the Fix tab to end it.", ok: "Start" })) return;
+  try { await queue("disk_test", { mode }, "Drive surface test"); $("stressHint").textContent = "Scanning drives — progress on the Fix tab."; show("jobs"); }
+  catch (e) { toast(e.message); }
+}
+$("diskQuick").onclick = () => diskTest("sample");
+$("diskFull").onclick = () => diskTest("full");
 $("problemAsk").onclick = () => {
   S.problem = $("problemText").value; saveState();
   if (!problemText()) { toast("Describe the problem first"); $("problemText").focus(); return; }

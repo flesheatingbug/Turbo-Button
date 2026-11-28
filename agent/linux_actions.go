@@ -80,6 +80,8 @@ func linuxRun(ctx context.Context, name string, env map[string]string, onLine fu
 		res, err = actProblemCheck(ctx, env["PCM_terms"], onLine)
 	case "stress_test":
 		res, err = actStressTest(ctx, env, onLine)
+	case "disk_test":
+		res, err = actDiskTest(ctx, env, onLine)
 	case "disk_usage":
 		res = actDiskUsage(onLine)
 	case "dns_flush":
