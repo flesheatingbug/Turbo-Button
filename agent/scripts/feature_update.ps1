@@ -29,6 +29,7 @@ if ($managed) {
 if ($env:PCM_mode -ne 'install') { Out-Result ($base + @{ result = 'upgrade available' }); return }
 
 $bypass = $env:PCM_bypass -eq '1'
+$matchLang = $env:PCM_matchlang -eq '1'
 if ($bypass) {
   Say 'Setting the documented overrides so Setup allows this PC despite the Windows 11 hardware requirements.'
   New-Item 'HKLM:\SYSTEM\Setup\MoSetup' -Force | Out-Null
@@ -37,37 +38,75 @@ if ($bypass) {
   foreach ($n in 'BypassTPMCheck', 'BypassSecureBootCheck', 'BypassCPUCheck', 'BypassRAMCheck', 'BypassStorageCheck') {
     New-ItemProperty 'HKLM:\SYSTEM\Setup\LabConfig' -Name $n -Value 1 -PropertyType DWord -Force | Out-Null
   }
-  $iso = "$env:PCM_iso"
-  if ($iso) {
-    if (-not (Test-Path -LiteralPath $iso)) { throw "Can't find the ISO at $iso." }
-    Say "Mounting $iso ..."
-    $before = (Get-Volume).DriveLetter
-    $img = Mount-DiskImage -ImagePath $iso -PassThru -ErrorAction Stop
-    Start-Sleep 3
-    $drive = ($img | Get-DiskImage | Get-Volume).DriveLetter
-    if (-not $drive) { $drive = ((Get-Volume).DriveLetter | Where-Object { $_ -and $_ -notin $before }) | Select-Object -First 1 }
-    try {
-      $setup = "${drive}:\setup.exe"
-      if (-not (Test-Path $setup)) { throw "No setup.exe on the mounted ISO ($setup). Is it a Windows 11 ISO?" }
-      $sig = Get-AuthenticodeSignature $setup
-      if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw "setup.exe on the ISO isn't signed by Microsoft ($($sig.Status)); not run." }
-      $logDir = Join-Path $env:TEMP 'turbo-win11'; New-Item -ItemType Directory -Force $logDir | Out-Null
-      Say 'Starting the in-place upgrade from the ISO (hardware check skipped via /product server). Files and programs are kept. This takes a while.'
-      # /product server makes Setup skip the Windows 11 client hardware appraisal while still doing a client upgrade.
-      $p = Start-Process $setup -ArgumentList '/auto', 'upgrade', '/product', 'server', '/dynamicupdate', 'disable', '/eula', 'accept', '/noreboot', '/copylogs', $logDir -PassThru -Wait
-      $t0 = Get-Date
-      while (Get-Process -Name SetupHost, SetupPrep -ErrorAction SilentlyContinue) {
-        if ([int]((Get-Date) - $t0).TotalSeconds % 300 -lt 15) { Say ('Still upgrading... ' + [int]((Get-Date) - $t0).TotalMinutes + ' min') }
-        Start-Sleep 15
+}
+
+$iso = "$env:PCM_iso"
+if ($iso) {
+  if (-not (Test-Path -LiteralPath $iso)) { throw "Can't find the ISO at $iso." }
+  Say "Mounting $iso ..."
+  $before = (Get-Volume).DriveLetter
+  $img = Mount-DiskImage -ImagePath $iso -PassThru -ErrorAction Stop
+  Start-Sleep 3
+  $drive = ($img | Get-DiskImage | Get-Volume).DriveLetter
+  if (-not $drive) { $drive = ((Get-Volume).DriveLetter | Where-Object { $_ -and $_ -notin $before }) | Select-Object -First 1 }
+  $nls = 'HKLM:\SYSTEM\CurrentControlSet\Control\Nls\Language'
+  $origInstall = $null; $origDefault = $null; $langNote = $null
+  try {
+    $setup = "${drive}:\setup.exe"
+    if (-not (Test-Path $setup)) { throw "No setup.exe on the mounted ISO ($setup). Is it a Windows 11 ISO?" }
+    $sig = Get-AuthenticodeSignature $setup
+    if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw "setup.exe on the ISO isn't signed by Microsoft ($($sig.Status)); not run." }
+
+    # Language-mismatch workaround: Setup greys out "keep apps and files" when the ISO's language
+    # differs from the installed one. Temporarily set the installed-language registry values to the
+    # ISO's, then restore them. (Microsoft tightened this after 20H1, so it may not always work; the
+    # sure route is an ISO in the same language, or matching the display language first.)
+    if ($matchLang) {
+      $isoTag = $null
+      $li = "${drive}:\sources\lang.ini"
+      if (Test-Path $li) { $mm = Select-String -LiteralPath $li -Pattern '^\[([a-zA-Z]{2}-[a-zA-Z]{2,})\]' | Select-Object -First 1; if ($mm) { $isoTag = $mm.Matches[0].Groups[1].Value } }
+      if (-not $isoTag) {
+        foreach ($wim in "install.wim", "install.esd") { $wp = "${drive}:\sources\$wim"; if (Test-Path $wp) { $di = & dism.exe /English /Get-WimInfo /WimFile:$wp /Index:1 2>$null; $lm = ($di | Select-String 'Languages?\s*:\s*([a-zA-Z]{2}-[a-zA-Z]{2,})'); if ($lm) { $isoTag = $lm.Matches[0].Groups[1].Value }; break } }
       }
-      $pending = (Test-Path "$env:SystemDrive\`$WINDOWS.~BT\Sources\SetupPlatform.exe") -or (Test-Path 'HKLM:\SYSTEM\Setup\MoSetup\Volatile')
-      $installed = $pending
-      if ($installed) { Say "Upgrade staged from the ISO. Windows 11 $target finishes during the next restart (20-40 min)." }
-      else { Say "Setup exited (code $($p.ExitCode)) without staging. Check $logDir\\*.log (setupact.log)." }
-    } finally { Dismount-DiskImage -ImagePath $iso -ErrorAction SilentlyContinue | Out-Null }
-    Out-Result ($base + @{ result = $(if ($installed) { 'installed' } else { 'failed' }); method = 'ISO (/product server)'; bypass = $true; rebootRequired = $true })
-    return
+      if ($isoTag) {
+        try {
+          $lcid = '{0:x4}' -f ([System.Globalization.CultureInfo]::GetCultureInfo($isoTag)).LCID
+          $cur = Get-ItemProperty $nls -ErrorAction Stop
+          $origInstall = $cur.InstallLanguage; $origDefault = $cur.Default
+          if ($origInstall -eq $lcid -and $origDefault -eq $lcid) { Say "The ISO language ($isoTag) already matches this PC; no change needed."; $origInstall = $null }
+          else {
+            Set-ItemProperty $nls -Name InstallLanguage -Value $lcid
+            Set-ItemProperty $nls -Name Default -Value $lcid
+            $langNote = "Set the installed-language keys to $isoTag ($lcid) so Setup allows keeping apps; will restore them after."
+            Say $langNote
+          }
+        } catch { Say "Couldn't work out or set the ISO language ($isoTag): $($_.Exception.Message). Carrying on; Setup may not let you keep apps." }
+      } else { Say "Couldn't read the ISO's language, so the language-match step was skipped." }
+    }
+
+    $logDir = Join-Path $env:TEMP 'turbo-win11'; New-Item -ItemType Directory -Force $logDir | Out-Null
+    $setupArgs = @('/auto', 'upgrade', '/dynamicupdate', 'disable', '/eula', 'accept', '/noreboot', '/copylogs', $logDir)
+    if ($bypass) { $setupArgs += @('/product', 'server'); Say 'Starting the in-place upgrade from the ISO (hardware check skipped via /product server). Files and programs are kept. This takes a while.' }
+    else { Say 'Starting the in-place upgrade from the ISO, keeping files and programs. This takes a while.' }
+    $p = Start-Process $setup -ArgumentList $setupArgs -PassThru -Wait
+    $t0 = Get-Date
+    while (Get-Process -Name SetupHost, SetupPrep -ErrorAction SilentlyContinue) {
+      if ([int]((Get-Date) - $t0).TotalSeconds % 300 -lt 15) { Say ('Still upgrading... ' + [int]((Get-Date) - $t0).TotalMinutes + ' min') }
+      Start-Sleep 15
+    }
+    $pending = (Test-Path "$env:SystemDrive\`$WINDOWS.~BT\Sources\SetupPlatform.exe") -or (Test-Path 'HKLM:\SYSTEM\Setup\MoSetup\Volatile')
+    $installed = $pending
+    if ($installed) { Say "Upgrade staged from the ISO. Windows 11 $target finishes during the next restart (20-40 min)." }
+    else { Say "Setup exited (code $($p.ExitCode)) without staging. If it refused to keep your apps, the ISO language differs from this PC - turn on 'match language', use a same-language ISO, or set the display language to match first. Logs: $logDir (setupact.log)." }
+  } finally {
+    if ($origInstall -ne $null) { try { Set-ItemProperty $nls -Name InstallLanguage -Value $origInstall; Set-ItemProperty $nls -Name Default -Value $origDefault; Say 'Restored the original language registry values.' } catch {} }
+    Dismount-DiskImage -ImagePath $iso -ErrorAction SilentlyContinue | Out-Null
   }
+  Out-Result ($base + @{ result = $(if ($installed) { 'installed' } else { 'failed' }); method = $(if ($bypass) { 'ISO (/product server)' } else { 'ISO' }); bypass = $bypass; languageMatched = [bool]$langNote; rebootRequired = $true })
+  return
+}
+
+if ($bypass) {
   Say 'No ISO given, so trying the Installation Assistant with the overrides. This works when the PC has TPM 1.2 and Secure Boot but an unsupported CPU. A PC with no TPM or no Secure Boot needs an ISO (point the step at a Windows 11 ISO, e.g. on your Medicat USB).'
   $env:PCM_assistant = '1'
 }
