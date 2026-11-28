@@ -354,7 +354,7 @@
     </div>
     <div class="card" id="baCard" style="display:none"><h2>Before → After</h2><div class="kv" id="baView"></div></div>
     <div class="card" id="reportCard" style="display:none">
-      <div class="row" style="margin-bottom:10px"><button class="b" id="dlBtn">Download</button><button class="b2" id="shareBtn">Share</button></div>
+      <div class="row" style="margin-bottom:10px"><button class="b" id="dlBtn">Download</button><button class="b2" id="shareBtn">Share</button><button class="b2" id="relaySaveBtn">Save to relay</button></div>
       <div id="reportView"></div>
     </div>
     <div class="card" id="historyCard" style="display:none">
@@ -379,7 +379,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.12.1";
+const PAGE_VERSION = "0.12.2";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -2066,10 +2066,26 @@ function reportDoc() {
   const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(S.report?.headline || "Service report")}</title></head><body style="margin:20px">${reportHTML()}</body></html>`;
   return { name, doc };
 }
+let lastRelayReportAt = 0;
+async function postReportToRelay(force) {
+  try {
+    const rc = relayCfg(); if (!rc || !S || !S.token) return;
+    if (!force && Date.now() - lastRelayReportAt < 15000) return;
+    lastRelayReportAt = Date.now();
+    const { id } = await relayKeys(S);
+    const r = S.report || {}, { doc } = reportDoc();
+    const summary = (r.customerSummary || r.headline || "Service report").slice(0, 180);
+    await http("POST", rc.url + "/phone/report", { Authorization: "Bearer " + rc.token, "Content-Type": "application/json" },
+      JSON.stringify({ id, name: S.scan?.system?.computerName || S.name || "PC", os: isLinux() ? "Linux" : "Windows", summary, html: doc }));
+    toast("Report saved to your relay.");
+  } catch (e) { /* relay optional */ }
+}
 function renderReport() {
   $("reportCard").style.display = "block"; $("reportView").innerHTML = reportHTML();
   if (NATIVE) { const d = reportDoc(); if (!S.savedReport) S.savedReport = d.name; window.TurboNative.saveReport(S.savedReport, d.doc); saveState(); loadHistory(); }
+  postReportToRelay();
 }
+if ($("relaySaveBtn")) $("relaySaveBtn").onclick = () => postReportToRelay(true);
 $("dlBtn").onclick = () => {
   if (NATIVE) { const d = reportDoc(); window.TurboNative.saveReport(S.savedReport || d.name, d.doc); window.TurboNative.shareReport(S.savedReport || d.name); return; }
   const d = reportDoc(); const f = new File([d.doc], d.name, { type: "text/html" });

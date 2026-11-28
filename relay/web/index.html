@@ -74,6 +74,12 @@
     </div>
 
     <div class="card">
+      <h2>Device reports</h2>
+      <div id="reports"></div>
+      <div class="mut" style="margin-top:8px">Reports your phone has saved here, newest first. Removing a device deletes its reports and drops it from the relay.</div>
+    </div>
+
+    <div class="card">
       <h2>Phones</h2>
       <div id="phones"></div>
       <div class="row" style="margin-top:10px"><button class="b" id="pairBtn">Pair a phone</button></div>
@@ -140,6 +146,14 @@ async function refresh() {
   $("phones").querySelectorAll("[data-rev]").forEach(b => b.onclick = async () => {
     if (!confirm("Remove this phone? It won't be able to use the relay until it's paired again.")) return;
     try { await call(`/ui/phones/${b.dataset.rev}/revoke`, {}); refresh(); } catch (e) { msg(e.message, true); }
+  });
+  const rp = state.reports || [];
+  $("reports").innerHTML = rp.length ? `<table><tr><th>PC</th><th>System</th><th>Summary</th><th>When</th><th></th></tr>` +
+    rp.map(m => `<tr><td>${esc(m.name || m.id)}</td><td>${esc(m.os || "")}</td><td class="mut">${esc(m.summary || "")}</td><td>${ago(m.when)} ago</td><td><a class="sm" href="/ui/report/${encodeURIComponent(m.id)}" target="_blank" rel="noopener">View</a> <button class="sm" data-del="${esc(m.id)}">Remove</button></td></tr>`).join("") + "</table>"
+    : '<span class="mut">No reports yet. Finish a job on your phone and it saves one here.</span>';
+  $("reports").querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+    if (!confirm("Remove this device and its saved reports from the relay?")) return;
+    try { await call("/ui/device/remove", { id: b.dataset.del }); refresh(); } catch (e) { msg(e.message, true); }
   });
   $("conf").textContent = `relay=${state.publicURL}\nrelaykey=${state.agentKey}`;
   if (!timer) timer = setInterval(refresh, 5000);

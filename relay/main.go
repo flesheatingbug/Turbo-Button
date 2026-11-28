@@ -91,12 +91,13 @@ type Relay struct {
 	pendTOTP string // TOTP secret waiting for confirmation during setup
 	pendPass [2]string
 	trust    bool // trust X-Forwarded-* from the reverse proxy
+	reports  map[string]*reportMeta
 }
 
 func main() {
 	addr := envOr("LISTEN", ":8080")
 	r := &Relay{dir: envOr("CONFIG_DIR", "/config"), agents: map[string]*agentConn{}, sessions: map[string]time.Time{},
-		pairs: map[string]time.Time{}, fails: map[string][]time.Time{}, trust: os.Getenv("TRUST_PROXY") != "0"}
+		pairs: map[string]time.Time{}, fails: map[string][]time.Time{}, reports: map[string]*reportMeta{}, trust: os.Getenv("TRUST_PROXY") != "0"}
 	if err := os.MkdirAll(r.dir, 0700); err != nil {
 		log.Fatalf("can't create %s: %v", r.dir, err)
 	}
@@ -107,6 +108,7 @@ func main() {
 		os.Remove(f.Name())
 	}
 	r.load()
+	r.loadReports()
 	if r.cfg.PassHash == "" {
 		r.setup = randHex(4)
 		log.Printf("New relay. Open the web page and use this setup code: %s", r.setup)
@@ -304,6 +306,8 @@ func (r *Relay) routes() http.Handler {
 	mux.HandleFunc("POST /ui/pair", r.ui(r.uiPair, true))
 	mux.HandleFunc("POST /ui/phones/{id}/revoke", r.ui(r.uiRevoke, true))
 	mux.HandleFunc("POST /ui/agentkey", r.ui(r.uiRotate, true))
+	mux.HandleFunc("GET /ui/report/{id}", r.uiReport)
+	mux.HandleFunc("POST /ui/device/remove", r.ui(r.uiDeviceRemove, true))
 	mux.HandleFunc("GET /ui/download", r.uiDownload)
 	mux.HandleFunc("GET /ui/rescue", r.uiRescue)
 	mux.HandleFunc("POST /ui/password", r.ui(r.uiPassword, true))
@@ -312,6 +316,7 @@ func (r *Relay) routes() http.Handler {
 	mux.HandleFunc("POST /phone/pair", r.phonePair)
 	mux.HandleFunc("GET /phone/pcs", r.phone(r.phonePCs))
 	mux.HandleFunc("POST /phone/send/{id}", r.phone(r.phoneSend))
+	mux.HandleFunc("POST /phone/report", r.phone(r.phoneReport))
 
 	// agents
 	mux.HandleFunc("POST /agent/hello", r.agent(r.agentHello))
@@ -484,7 +489,7 @@ func (r *Relay) uiState(w http.ResponseWriter, req *http.Request) {
 	}
 	sort.Slice(agents, func(i, j int) bool { return agents[i].Name < agents[j].Name })
 	writeJSON(w, 200, map[string]any{"loggedIn": true, "version": Version, "publicURL": r.publicURL(req),
-		"agentKey": r.cfg.AgentKey, "agents": agents, "phones": r.cfg.Phones})
+		"agentKey": r.cfg.AgentKey, "agents": agents, "phones": r.cfg.Phones, "reports": r.reportList()})
 }
 
 func (r *Relay) uiPair(w http.ResponseWriter, req *http.Request) {
