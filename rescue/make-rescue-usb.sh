@@ -24,6 +24,26 @@ while [ $# -gt 0 ]; do case "$1" in
 esac; done
 true  # device is auto-detected below if not given
 [ "$(id -u)" = 0 ] || exec sudo -- "$0" ${DEV:+-d "$DEV"} ${ISO:+-i "$ISO"}
+
+# Tools we need; install the missing ones via the distro's package manager (we are root).
+ensure_tools(){
+  local miss=""
+  command -v sgdisk     >/dev/null || miss="$miss gptfdisk"
+  command -v mkfs.vfat  >/dev/null || miss="$miss dosfstools"
+  command -v partprobe  >/dev/null || miss="$miss parted"
+  [ -n "$miss" ] || return 0
+  echo "Missing tools needed to build the stick:$miss"
+  if   command -v pacman >/dev/null; then set -- pacman -S --needed --noconfirm $miss
+  elif command -v apt-get >/dev/null; then miss=${miss/gptfdisk/gdisk}; apt-get update -qq || true; set -- apt-get install -y $miss
+  elif command -v dnf    >/dev/null; then miss=${miss/gptfdisk/gdisk}; set -- dnf install -y $miss
+  elif command -v zypper >/dev/null; then set -- zypper --non-interactive install $miss
+  else die "please install:$miss  (couldn't find a package manager to do it automatically)"; fi
+  echo "==> Installing:$miss"
+  "$@" || die "couldn't install$miss automatically — install them yourself and re-run"
+  for t in sgdisk mkfs.vfat partprobe; do command -v "$t" >/dev/null || die "'$t' still missing after install"; done
+}
+ensure_tools
+
 if [ -z "$DEV" ]; then
   CANDS=$(lsblk -dpno NAME,RM,TRAN 2>/dev/null | awk '($2==1)||($3=="usb"){print $1}')
   N=$(printf '%s\n' "$CANDS" | grep -c . || true)
@@ -66,7 +86,6 @@ if [ ! -f "$SELF/turbobutton" ]; then
   [ -n "$want" ] && [ "$want" != "$got" ] && die "downloaded agent checksum mismatch (want $want got $got)"
   chmod +x "$SELF/turbobutton"
 fi
-for t in dd sgdisk mkfs.vfat partprobe lsblk; do command -v "$t" >/dev/null || die "need '$t' (install gptfdisk/dosfstools)"; done
 
 # Safety: refuse the disk that holds the running system.
 ROOTSRC="$(findmnt -no SOURCE / || true)"
