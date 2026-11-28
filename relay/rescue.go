@@ -7,7 +7,9 @@ package main
 
 import (
 	"archive/zip"
-	_ "embed"
+	"embed"
+	"io/fs"
+	"strings"
 	"log"
 	"net/http"
 	"time"
@@ -18,6 +20,12 @@ var makeUsbSh []byte
 
 //go:embed rescuefiles/make-rescue-usb.ps1
 var makeUsbPs1 []byte
+
+//go:embed rescuefiles/build-rescue-iso.sh
+var buildIsoSh []byte
+
+//go:embed rescuefiles/turbo-iso
+var turboIsoFS embed.FS
 
 const rescueLauncher = `#!/bin/sh
 # Turbo Button rescue launcher. Run this after booting the PC from SystemRescue (as root).
@@ -31,21 +39,18 @@ exec ./turbobutton --rescue
 func rescueReadme(pub string) string {
 	return "Turbo Button - rescue USB\n" +
 		"=========================\n\n" +
-		"For a PC that won't boot or keeps blue-screening. Make the stick on any spare computer\n" +
-		"with a USB stick (8 GB+). SystemRescue downloads automatically - no other files needed.\n\n" +
-		"LINUX (e.g. CachyOS):\n" +
-		"  chmod +x make-rescue-usb.sh\n" +
-		"  sudo ./make-rescue-usb.sh           # finds the USB, asks you to type ERASE\n" +
-		"  (or pass -d /dev/sdX for a specific disk, -i file.iso for your own ISO)\n\n" +
-		"WINDOWS:\n" +
-		"  Right-click make-rescue-usb.ps1 -> Run with PowerShell (as administrator).\n" +
-		"  It lists your USB drives and asks which to use.\n\n" +
-		"THEN:\n" +
-		"  1. Boot the dead PC from the USB via UEFI, connect WiFi (iwctl, or nmtui).\n" +
-		"  2. Pick the 'autoruns' boot entry (or run: sh /path/to/turbo-rescue/turbo-rescue.sh).\n" +
-		"  3. On your phone, open " + pub + " - the PC shows under Office PCs (relay).\n" +
-		"     Run a scan: blue-screen codes, boot/registry health, accounts, SMART. Read-only.\n\n" +
-		"Nothing on the Windows disk is changed unless you choose a fix.\n"
+		"For a PC that won't boot or keeps blue-screening. The stick boots STRAIGHT into Turbo\n" +
+		"Button - no full rescue OS. Build it on an Arch/CachyOS box with a spare USB (8 GB+):\n\n" +
+		"  chmod +x build-rescue-iso.sh\n" +
+		"  sudo ./build-rescue-iso.sh          # builds the image + writes the USB (type ERASE)\n\n" +
+		"Your relay settings (turbobutton.conf, included here) are baked in, so the booted PC\n" +
+		"connects to " + pub + " by itself and appears under Office PCs (relay).\n\n" +
+		"On the dead PC: boot from the USB (BIOS or UEFI), connect WiFi when asked. You're in\n" +
+		"Turbo Button. Run a scan: blue-screen codes, boot/registry health, accounts, SMART.\n" +
+		"Read-only - nothing on the Windows disk changes unless you choose a fix.\n\n" +
+		"Not on Arch? Build the ISO on any Arch/CachyOS machine (--iso-only), then write out/*.iso\n" +
+		"to USB anywhere with dd (or Rufus/Etcher). make-rescue-usb.sh/.ps1 build a full\n" +
+		"SystemRescue stick instead, if you prefer that.\n"
 }
 
 func (r *Relay) uiRescue(w http.ResponseWriter, req *http.Request) {
@@ -77,6 +82,17 @@ func (r *Relay) uiRescue(w http.ResponseWriter, req *http.Request) {
 	add("turbo-rescue.sh", []byte(rescueLauncher))
 	add("make-rescue-usb.sh", makeUsbSh)
 	add("make-rescue-usb.ps1", makeUsbPs1)
+	add("build-rescue-iso.sh", buildIsoSh)
+	// The archiso profile for the minimal boot-straight-to-Turbo-Button image.
+	fs.WalkDir(turboIsoFS, "rescuefiles/turbo-iso", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if b, e := turboIsoFS.ReadFile(path); e == nil {
+			add(strings.TrimPrefix(path, "rescuefiles/"), b)
+		}
+		return nil
+	})
 	add("README.txt", []byte(rescueReadme(pub)))
 	zw.Close()
 	log.Printf("rescue maker downloaded from %s", r.clientIP(req))

@@ -99,14 +99,13 @@
         <a class="btn" href="/ui/rescue" download>Rescue USB maker (dead/no-boot PC)</a>
       </div>
       <details style="margin-top:6px"><summary class="mut" style="cursor:pointer">Make a bootable rescue USB — steps</summary>
-      <p class="mut">For a PC that won't boot or keeps blue-screening. Do this on any Linux or Windows computer with a spare USB stick (8&nbsp;GB+). It downloads SystemRescue for you.</p>
-      <p class="mut"><b>Linux</b> (e.g. your CachyOS box): download the maker above, then in a terminal:</p>
+      <p class="mut">For a PC that won't boot or keeps blue-screening. The stick boots straight into Turbo Button (no full OS). Build it on an Arch/CachyOS box with a spare USB (8&nbsp;GB+):</p>
       <pre>unzip ~/Downloads/turbo-button-rescue.zip -d ~/Downloads
 cd ~/Downloads/turbo-rescue
-chmod +x make-rescue-usb.sh
-sudo ./make-rescue-usb.sh          # finds the USB and asks you to type ERASE</pre>
-      <p class="mut"><b>Windows:</b> extract the zip, right-click <b>make-rescue-usb.ps1</b> → Run with PowerShell (as administrator). It lists your USB drives and asks which to use.</p>
-      <p class="mut">Then boot the dead PC from that USB, connect WiFi, pick the <b>autoruns</b> boot entry, and it appears in your phone's PC list under Office PCs.</p>
+chmod +x build-rescue-iso.sh
+sudo ./build-rescue-iso.sh          # builds the image and writes the USB (type ERASE)</pre>
+      <p class="mut">It bakes in your relay settings, so the booted PC connects to this relay by itself and shows up under Office PCs. Then on the dead PC: boot from the USB (BIOS or UEFI), connect WiFi when it asks, and it's in Turbo Button.</p>
+      <p class="mut"><b>Not on Arch?</b> Build the image on any Arch/CachyOS machine once, then write the resulting <code>out/*.iso</code> to USB anywhere with <code>dd</code> (or Rufus/Etcher on Windows). <code>make-rescue-usb.sh</code>/<code>.ps1</code> remain for building a full SystemRescue stick instead.</p>
       </details>
       <p class="mut">The first download takes a moment while the relay fetches the latest build from GitHub. If you make a new relay key below, download again: older copies stop connecting.</p>
       <p class="mut">Or save this as <b>turbobutton.conf</b> next to TurboButton.exe / the AppImage on your USB stick. The agent then also connects through this relay, so your phone can reach it from anywhere.</p>

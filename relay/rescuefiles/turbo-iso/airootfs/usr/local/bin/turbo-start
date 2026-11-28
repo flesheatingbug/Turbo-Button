@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+setfont ter-118b 2>/dev/null || true
+clear
+cat <<'BANNER'
+
+   ████████╗██╗   ██╗██████╗ ██████╗  ██████╗
+   ╚══██╔══╝██║   ██║██╔══██╗██╔══██╗██╔═══██╗
+      ██║   ██║   ██║██████╔╝██████╔╝██║   ██║
+      ██║   ██║   ██║██╔══██╗██╔══██╗██║   ██║
+      ██║   ╚██████╔╝██║  ██║██████╔╝╚██████╔╝
+      ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚═════╝  ╚═════╝
+               B U T T O N   ·   R E S C U E
+
+BANNER
+echo "  Starting network..."
+systemctl start NetworkManager 2>/dev/null
+ok=0
+for i in $(seq 1 12); do nm-online -q -t 2 && { ok=1; break; }; sleep 1; done
+if [[ $ok -ne 1 ]]; then
+  echo
+  echo "  No network yet. Opening the Wi-Fi chooser (pick your network, enter the password)."
+  echo "  Wired/ethernet connects on its own — just close this if you're on a cable."
+  sleep 2
+  nmtui connect || nmtui
+fi
+echo
+echo "  Launching Turbo Button. A QR code / pairing code will appear below."
+echo "  Open the phone app on the same network, or it connects to your relay automatically."
+echo
+cd /root || cd /
+chmod +x ./turbobutton 2>/dev/null || true
+if [[ -x ./turbobutton ]]; then
+  while true; do
+    ./turbobutton --rescue
+    echo
+    echo "  Turbo Button stopped. [r] restart   [w] Wi-Fi   [s] shell   [p] power off"
+    read -rn1 -p "  > " k; echo
+    case "$k" in w|W) nmtui;; s|S) bash;; p|P) poweroff;; *) :;; esac
+  done
+else
+  echo "  turbobutton binary missing from the image."; exec bash
+fi
