@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Turbo Button — one-tap PC repair from your phone</title>
+<meta name="description" content="A portable Windows &amp; Linux repair agent you drive from your phone. Scan, diagnose with AI, fix, stress-test, and rescue dead PCs — no install, nothing left behind.">
+<link rel="icon" href="https://raw.githubusercontent.com/flesheatingbug/Turbo-Button/main/docs/media/hero.png">
+<style>
+  :root{
+    --bg:#020b05; --card:#03130a; --line:#0e4a24; --text:#5dff87; --mut:#2c9c50;
+    --acc:#b4ffc8; --ok:#5dff87; --warn:#ffc933; --bad:#ff5b4a; --glow:0 0 24px rgba(93,255,135,.18);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:16px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(1200px 600px at 50% -10%,rgba(93,255,135,.08),transparent 60%);
+  }
+  a{color:var(--acc);text-decoration:none}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 20px}
+  header{padding:22px 0;display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap}
+  .logo{font-weight:700;letter-spacing:.14em;text-transform:uppercase;font-size:18px}
+  .logo .dot{color:var(--warn)}
+  nav a{color:var(--mut);margin-left:18px;font-size:14px}
+  nav a:hover{color:var(--text)}
+  .hero{text-align:center;padding:48px 0 30px}
+  .hero h1{font-size:clamp(30px,6vw,52px);line-height:1.1;margin:.2em 0;color:var(--text);text-shadow:var(--glow)}
+  .hero p.lead{font-size:clamp(16px,2.4vw,20px);color:var(--acc);max-width:720px;margin:12px auto 0}
+  .hero .sub{color:var(--mut);max-width:680px;margin:14px auto 0}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:28px 0 6px}
+  .btn{display:inline-block;border:1px solid var(--line);background:var(--card);color:var(--text);
+    padding:12px 18px;border-radius:10px;font-weight:600;letter-spacing:.03em;transition:.15s}
+  .btn:hover{border-color:var(--ok);box-shadow:var(--glow);transform:translateY(-1px)}
+  .btn.primary{background:linear-gradient(180deg,rgba(93,255,135,.18),rgba(93,255,135,.06));border-color:var(--ok)}
+  .btn small{display:block;color:var(--mut);font-weight:400;font-size:11px;letter-spacing:0}
+  .shot{width:100%;border:1px solid var(--line);border-radius:14px;box-shadow:var(--glow);display:block}
+  .heroshot{max-width:760px;margin:30px auto 0}
+  section{padding:46px 0;border-top:1px solid var(--line)}
+  h2{font-size:clamp(22px,3.4vw,30px);text-align:center;margin:0 0 6px}
+  .tag{text-align:center;color:var(--mut);margin:0 auto 30px;max-width:640px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+  .feat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .feat h3{margin:.1em 0 .3em;font-size:17px;color:var(--text)}
+  .feat p{margin:0;color:var(--mut);font-size:14px}
+  .feat .ico{font-size:22px}
+  .steps{counter-reset:s;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+  .step{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;position:relative}
+  .step::before{counter-increment:s;content:counter(s);display:inline-flex;align-items:center;justify-content:center;
+    width:30px;height:30px;border-radius:50%;border:1px solid var(--ok);color:var(--ok);font-weight:700;margin-bottom:10px}
+  .step h3{margin:0 0 .3em;font-size:16px}
+  .step p{margin:0;color:var(--mut);font-size:14px}
+  .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-top:10px}
+  .gallery figure{margin:0}
+  .gallery img{width:100%;border:1px solid var(--line);border-radius:10px}
+  .gallery figcaption{color:var(--mut);font-size:12px;text-align:center;margin-top:6px}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:center}
+  .split ul{padding-left:18px;color:var(--mut)}
+  .split li{margin:.4em 0}
+  .split li b{color:var(--text)}
+  .note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:8px;padding:12px 16px;color:var(--mut);font-size:14px}
+  footer{border-top:1px solid var(--line);padding:30px 0;color:var(--mut);font-size:13px;text-align:center}
+  .pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--acc);margin:2px}
+  @media(max-width:720px){.split{grid-template-columns:1fr}nav{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">&gt; Turbo Button <span class="dot">●</span></div>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#rescue">Rescue</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/flesheatingbug/Turbo-Button">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>Fix any PC from your phone.</h1>
+    <p class="lead">A portable Windows &amp; Linux repair agent you drive from an Android app. Scan, diagnose with AI, fix, stress-test — and rescue dead machines that won't even boot.</p>
+    <p class="sub">No install. Nothing left behind. One small file on a USB stick and a QR code.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton.apk">Get the phone app<small>Android APK</small></a>
+      <a class="btn" href="https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton.exe">Windows agent<small>TurboButton.exe</small></a>
+      <a class="btn" href="https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton-x86_64.AppImage">Linux agent<small>AppImage</small></a>
+    </div>
+    <img class="shot heroshot" src="https://raw.githubusercontent.com/flesheatingbug/Turbo-Button/main/docs/media/hero.png" alt="Turbo Button on a phone next to a PC">
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>What it does</h2>
+    <p class="tag">Everything a repair job needs, run from the phone in your hand.</p>
+    <div class="grid">
+      <div class="feat"><div class="ico">🔍</div><h3>Deep scan</h3><p>Hardware and drive health, SMART, temperatures, startup speed, what's slowing the PC down, blue-screen history and more.</p></div>
+      <div class="feat"><div class="ico">🤖</div><h3>AI diagnosis</h3><p>Ask AI about the PC and get a repair plan built from the real scan — or use the free ChatGPT/Claude apps with no API key.</p></div>
+      <div class="feat"><div class="ico">🧰</div><h3>One-tap fixes</h3><p>Clean-up, Windows &amp; driver updates, bloat and dodgy startup items, privacy tweaks, network resets — you approve each one.</p></div>
+      <div class="feat"><div class="ico">🔥</div><h3>Stress &amp; drive tests</h3><p>Load the CPU and RAM while watching the temperature, and surface-scan HDDs/SSDs for bad sectors and slow regions.</p></div>
+      <div class="feat"><div class="ico">🛡️</div><h3>Security</h3><p>Defender scans, remove threats still on the disk, and clean off unwanted antivirus or duplicate Office installs.</p></div>
+      <div class="feat"><div class="ico">⬆️</div><h3>Windows 11, your way</h3><p>Upgrade to the newest version, skip the TPM/CPU block on unsupported PCs, and work around a different-language ISO.</p></div>
+      <div class="feat"><div class="ico">🌐</div><h3>Remote via your relay</h3><p>Self-host the relay and reach standby office PCs, or a customer's machine, from anywhere — password + one-time code.</p></div>
+      <div class="feat"><div class="ico">🧹</div><h3>Clean by design</h3><p>Runs portable from a USB stick, keeps nothing on the PC, and removes its traces when the session ends.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="tag">Plug in the stick, scan a code, work from the couch.</p>
+    <div class="steps">
+      <div class="step"><h3>Run the agent</h3><p>Double-click TurboButton.exe (or the AppImage on Linux) from your USB stick. A QR code appears on the PC.</p></div>
+      <div class="step"><h3>Scan the code</h3><p>Open the phone app and scan it. The PC and phone pair over your Wi-Fi — or your relay, from anywhere.</p></div>
+      <div class="step"><h3>Scan &amp; plan</h3><p>Run a scan, let AI build a plan, and review what it suggests. Nothing runs without your tap.</p></div>
+      <div class="step"><h3>Fix &amp; report</h3><p>Approve the fixes, watch progress live, and hand the customer a clean before/after report.</p></div>
+    </div>
+    <div class="gallery">
+      <figure><img src="https://raw.githubusercontent.com/flesheatingbug/Turbo-Button/main/docs/media/phone-scan.png" alt="Scan"><figcaption>Scan</figcaption></figure>
+      <figure><img src="https://raw.githubusercontent.com/flesheatingbug/Turbo-Button/main/docs/media/phone-plan2.png" alt="AI plan"><figcaption>AI plan</figcaption></figure>
+      <figure><img src="https://raw.githubusercontent.com/flesheatingbug/Turbo-Button/main/docs/media/phone-fix.png" alt="Fix"><figcaption>Fix</figcaption></figure>
+      <figure><img src="https://raw.githubusercontent.com/flesheatingbug/Turbo-Button/main/docs/media/phone-report2.png" alt="Report"><figcaption>Report</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="rescue">
+  <div class="wrap">
+    <h2>Rescue a dead PC</h2>
+    <p class="tag">Won't boot? Blue-screening? Boot it from a USB and read it off the disk.</p>
+    <div class="split">
+      <div>
+        <ul>
+          <li><b>Boot from a rescue USB</b> and read the offline Windows, read-only.</li>
+          <li><b>Blue-screen codes</b> pulled from the crash dumps, in plain language.</li>
+          <li><b>Won't-boot causes</b> — corrupt registry, missing boot files, stuck updates — and what's recoverable.</li>
+          <li><b>Reset a forgotten password</b> on a local Windows or Linux account.</li>
+          <li><b>Drive health</b> and SMART, so you back up a failing disk first.</li>
+        </ul>
+        <p class="note">Read-only by default — nothing on the patient disk changes until you choose a fix. Can't defeat BitLocker or a Microsoft-account login (those are encrypted).</p>
+      </div>
+      <div>
+        <img class="shot" src="https://raw.githubusercontent.com/flesheatingbug/Turbo-Button/main/docs/media/relay-dashboard.png" alt="Relay dashboard">
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <h2>Download</h2>
+    <p class="tag">Free and open source. Always the latest build.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton.apk">Android app<small>TurboButton.apk</small></a>
+      <a class="btn" href="https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton.exe">Windows<small>TurboButton.exe</small></a>
+      <a class="btn" href="https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/TurboButton-x86_64.AppImage">Linux<small>AppImage</small></a>
+      <a class="btn" href="https://github.com/flesheatingbug/Turbo-Button/releases/download/latest/turbo-relay-linux-x86_64">Relay server<small>self-host</small></a>
+    </div>
+    <p class="tag" style="margin-top:22px">
+      <span class="pill">No install</span>
+      <span class="pill">Portable</span>
+      <span class="pill">Open source</span>
+      <span class="pill">Your data stays yours</span>
+      <span class="pill">Self-hosted relay</span>
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Turbo Button — portable PC repair, driven from your phone.<br>
+    <a href="https://github.com/flesheatingbug/Turbo-Button">github.com/flesheatingbug/Turbo-Button</a> · MIT-spirited, use at your own risk on PCs you're authorised to service.
+  </div>
+</footer>
+</body>
+</html>
