@@ -161,6 +161,12 @@
   #flash .bar { height:4px; background:var(--ok); margin-top:10px; animation:fill 1s steps(12) forwards; transform-origin:left; }
   @keyframes fill { from { transform:scaleX(0) } to { transform:scaleX(1) } }
   #boot .cur { animation:blink 1s steps(1) infinite; }
+  details.setsec > summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px}
+  details.setsec > summary::-webkit-details-marker{display:none}
+  details.setsec > summary h2{margin:0;flex:1}
+  details.setsec > summary::after{content:"▸";color:var(--mut);font-size:14px;transition:transform .15s}
+  details.setsec[open] > summary::after{transform:rotate(90deg)}
+  details.setsec[open] > summary{margin-bottom:10px}
 </style>
 </head>
 <body class="term">
@@ -192,8 +198,9 @@
 
   <!-- SETTINGS (gear) -->
   <section id="tab-settings">
-    <div class="card">
-      <h2>AI provider</h2>
+    <div class="mut" style="margin-bottom:10px">Tap a section to open it.</div>
+    <details class="card setsec" open>
+      <summary><h2>AI provider</h2></summary>
       <div class="mut">Your key is used from this phone only and is sent straight to the provider. It never goes to the customer's PC.</div>
       <label>Provider</label>
       <select id="aiProvider">
@@ -215,39 +222,39 @@
       </div>
       <label class="row" id="rememberRow"><input type="checkbox" id="aiRemember" style="width:auto"> Remember on this phone for this PC address</label>
       <div class="row" style="margin-top:10px"><button class="b" id="aiSave">Save</button><button class="b2" id="aiTest">Test</button><span id="aiTestOut" class="mut"></span></div>
-    </div>
-    <div class="card">
-      <h2>Look</h2>
+    </details>
+    <details class="card setsec">
+      <summary><h2>Appearance</h2></summary>
       <select id="themeSel">
         <option value="green">Terminal — green phosphor</option>
         <option value="amber">Terminal — amber</option>
         <option value="deep">Deep space — freighter terminal</option>
         <option value="modern">Modern</option>
       </select>
-    </div>
-    <div class="card">
-      <h2>This PC</h2>
+    </details>
+    <details class="card setsec">
+      <summary><h2>This PC</h2></summary>
       <label class="row"><input type="checkbox" id="autoRP" style="width:auto" checked> Create a restore point automatically before the first change</label>
       <div class="mut" id="sessionInfo"></div>
       <div class="mut" id="versionInfo" style="margin-top:4px"></div>
-    </div>
-    <div class="card" id="relayCard" style="display:none">
-      <h2>Relay server</h2>
+    </details>
+    <details class="card setsec" id="relayCard" style="display:none">
+      <summary><h2>Relay server</h2></summary>
       <div id="relayState" class="mut"></div>
       <div class="row" style="margin-top:8px"><button class="b2" id="relayPair">Pair with relay</button><button class="b2" id="relayUnpair">Unpair</button></div>
       <div class="mut" style="margin-top:6px">Your own turbo-relay server lets the phone reach PCs that aren't on the same Wi-Fi: remote-desktop jobs and office PCs. To pair: sign in to the relay's web page, tap <b>Pair a phone</b>, then <b>Pair with relay</b> here and scan the code. Everything sent through it is end-to-end encrypted.</div>
-    </div>
-    <div class="card" id="notifyCard" style="display:none">
-      <h2>Notifications</h2>
+    </details>
+    <details class="card setsec" id="notifyCard" style="display:none">
+      <summary><h2>Notifications</h2></summary>
       <label class="row"><input type="checkbox" id="notifyOn" style="width:auto"> Tell me when scans and fixes finish</label>
       <div class="mut" style="margin-top:6px">Only while Turbo Button isn't on screen. While jobs run, a quiet "working" notification keeps the app awake so the alert still arrives with the screen off.</div>
-    </div>
-    <div class="card" id="updCard" style="display:none">
-      <h2>App updates</h2>
+    </details>
+    <details class="card setsec" id="updCard" style="display:none">
+      <summary><h2>App updates</h2></summary>
       <label class="row"><input type="checkbox" id="updAuto" style="width:auto"> Check for new builds automatically</label>
       <div class="row" style="margin-top:8px"><button class="b2" id="updCheck">Check for updates</button><span class="mut" id="updBuild"></span></div>
       <div class="mut" style="margin-top:6px">New builds come from the GitHub release page. The app checks when it opens and twice a day in the background, then asks before downloading and installing.</div>
-    </div>
+    </details>
   </section>
 
   <!-- SCAN -->
@@ -379,7 +386,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.12.2";
+const PAGE_VERSION = "0.12.3";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };

@@ -13,7 +13,17 @@ $ErrorActionPreference = 'Stop'
 $self = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole('Administrator')) { throw "Run this in an Administrator PowerShell." }
 if (-not (Test-Path $Iso)) { throw "ISO not found: $Iso" }
-foreach ($f in 'turbobutton','turbo-rescue.sh') { if (-not (Test-Path (Join-Path $self $f))) { throw "missing $f next to this script" } }
+if (-not (Test-Path (Join-Path $self 'turbo-rescue.sh'))) { throw "missing turbo-rescue.sh next to this script" }
+$agent = Join-Path $self 'turbobutton'
+if (-not (Test-Path $agent)) {
+  Write-Host "==> Downloading the Linux agent from GitHub"
+  $rel = 'https://github.com/flesheatingbug/Turbo-Button/releases/download/latest'
+  Invoke-WebRequest "$rel/TurboButton-linux-x86_64" -OutFile $agent
+  $sums = (Invoke-WebRequest "$rel/SHA256SUMS" -UseBasicParsing).Content
+  $want = (($sums -split "`n") | Where-Object { $_ -match 'TurboButton-linux-x86_64\s*$' }) -replace '\s.*', ''
+  $got = (Get-FileHash $agent -Algorithm SHA256).Hash.ToLower()
+  if ($want -and $want.Trim() -ne $got) { throw "downloaded agent checksum mismatch" }
+}
 
 Write-Host "Removable drives:`n"
 $disks = Get-Disk | Where-Object { $_.BusType -eq 'USB' }

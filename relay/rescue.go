@@ -6,12 +6,10 @@ package main
 // to this relay, so the technician can scan the offline Windows from their phone over the PC's WiFi.
 
 import (
-	"archive/tar"
-	"compress/gzip"
+	"archive/zip"
 	_ "embed"
 	"log"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -50,37 +48,31 @@ func (r *Relay) uiRescue(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "Sign in to the relay page first.", 401)
 		return
 	}
-	agent, err := r.cachedAsset("TurboButton-linux-x86_64")
-	if err != nil {
-		http.Error(w, err.Error(), 502)
-		return
-	}
-	bin, err := os.ReadFile(agent)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
 	r.mu.Lock()
 	conf := "relay=" + r.publicURL(req) + "\nrelaykey=" + r.cfg.AgentKey + "\nstandby=yes\n"
 	pub := r.publicURL(req)
 	r.mu.Unlock()
 
-	w.Header().Set("Content-Type", "application/gzip")
-	w.Header().Set("Content-Disposition", `attachment; filename="turbo-button-rescue.tar.gz"`)
+	// A small, reliable zip: the maker scripts, a launcher, your relay settings, and a README.
+	// The scripts download the Linux agent from GitHub themselves when you build the stick, so
+	// this download never depends on the relay reaching GitHub.
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="turbo-button-rescue.zip"`)
 	w.Header().Set("Cache-Control", "no-store")
-	gz := gzip.NewWriter(w)
-	tw := tar.NewWriter(gz)
-	add := func(name string, mode int64, body []byte) {
-		tw.WriteHeader(&tar.Header{Name: "turbo-rescue/" + name, Mode: mode, Size: int64(len(body)), ModTime: time.Now(), Typeflag: tar.TypeReg})
-		tw.Write(body)
+	zw := zip.NewWriter(w)
+	add := func(name string, body []byte) {
+		h := &zip.FileHeader{Name: "turbo-rescue/" + name, Method: zip.Deflate, Modified: time.Now()}
+		h.SetMode(0755)
+		fw, err := zw.CreateHeader(h)
+		if err == nil {
+			fw.Write(body)
+		}
 	}
-	add("turbobutton", 0755, bin)
-	add("turbobutton.conf", 0600, []byte(conf))
-	add("turbo-rescue.sh", 0755, []byte(rescueLauncher))
-	add("make-rescue-usb.sh", 0755, makeUsbSh)
-	add("make-rescue-usb.ps1", 0644, makeUsbPs1)
-	add("README.txt", 0644, []byte(rescueReadme(pub)))
-	tw.Close()
-	gz.Close()
-	log.Printf("rescue bundle downloaded from %s", r.clientIP(req))
+	add("turbobutton.conf", []byte(conf))
+	add("turbo-rescue.sh", []byte(rescueLauncher))
+	add("make-rescue-usb.sh", makeUsbSh)
+	add("make-rescue-usb.ps1", makeUsbPs1)
+	add("README.txt", []byte(rescueReadme(pub)))
+	zw.Close()
+	log.Printf("rescue maker downloaded from %s", r.clientIP(req))
 }

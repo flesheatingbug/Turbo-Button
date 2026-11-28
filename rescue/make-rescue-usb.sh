@@ -25,7 +25,17 @@ esac; done
 [ "$(id -u)" = 0 ] || exec sudo -- "$0" -d "$DEV" -i "$ISO"
 [ -b "$DEV" ] || die "$DEV is not a block device"
 [ -f "$ISO" ] || die "ISO not found: $ISO"
-for f in turbobutton turbo-rescue.sh; do [ -f "$SELF/$f" ] || die "missing $f next to this script"; done
+[ -f "$SELF/turbo-rescue.sh" ] || die "missing turbo-rescue.sh next to this script"
+REL="https://github.com/flesheatingbug/Turbo-Button/releases/download/latest"
+if [ ! -f "$SELF/turbobutton" ]; then
+  echo "==> Downloading the Linux agent from GitHub"
+  if command -v curl >/dev/null; then curl -fL "$REL/TurboButton-linux-x86_64" -o "$SELF/turbobutton"
+  else wget -O "$SELF/turbobutton" "$REL/TurboButton-linux-x86_64"; fi
+  want=$( (command -v curl >/dev/null && curl -fsL "$REL/SHA256SUMS" || wget -qO- "$REL/SHA256SUMS") | awk "/TurboButton-linux-x86_64\$/{print \$1}")
+  got=$(sha256sum "$SELF/turbobutton" | awk "{print \$1}")
+  [ -n "$want" ] && [ "$want" != "$got" ] && die "downloaded agent checksum mismatch (want $want got $got)"
+  chmod +x "$SELF/turbobutton"
+fi
 for t in dd sgdisk mkfs.vfat partprobe lsblk; do command -v "$t" >/dev/null || die "need '$t' (install gptfdisk/dosfstools)"; done
 
 # Safety: refuse the disk that holds the running system.
