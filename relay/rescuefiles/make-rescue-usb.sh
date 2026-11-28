@@ -12,8 +12,9 @@ set -euo pipefail
 DEV=""; ISO=""
 SELF="$(cd "$(dirname "$0")" && pwd)"
 die(){ echo "Error: $*" >&2; exit 1; }
+is_iso(){ [ -f "$1" ] && [ "$(stat -c%s "$1" 2>/dev/null || echo 0)" -gt 400000000 ] && [ "$(dd if="$1" bs=1 skip=32769 count=5 2>/dev/null)" = CD001 ]; }
 usage(){
-  echo "Usage: sudo $0 -d <device> -i <systemrescue.iso>"
+  echo "Usage: sudo $0 -d <device> [-i <systemrescue.iso>]   (ISO auto-downloads if omitted)"
   echo "Removable disks:"
   lsblk -dpno NAME,SIZE,MODEL,TRAN 2>/dev/null | grep -i usb || lsblk -dpno NAME,SIZE,MODEL
   exit 1
@@ -21,13 +22,27 @@ usage(){
 while [ $# -gt 0 ]; do case "$1" in
   -d) DEV="$2"; shift 2;; -i) ISO="$2"; shift 2;; -h|--help) usage;; *) die "unknown option $1";;
 esac; done
-[ -n "$DEV" ] && [ -n "$ISO" ] || usage
+[ -n "$DEV" ] || usage
 [ "$(id -u)" = 0 ] || exec sudo -- "$0" -d "$DEV" -i "$ISO"
 [ -b "$DEV" ] || die "$DEV is not a block device. Pick a USB disk from: lsblk -dpo NAME,SIZE,MODEL,TRAN"
 if [ "$(lsblk -dno TYPE "$DEV" 2>/dev/null)" = part ]; then
   die "$DEV is a partition. Use the WHOLE disk instead, e.g. ${DEV%[0-9]*} (not ${DEV}). The script wipes and repartitions the whole stick."
 fi
-[ -f "$ISO" ] || die "ISO not found: $ISO  — download a SystemRescue amd64 ISO from https://www.system-rescue.org/Download/ and pass its path with -i"
+if [ -z "$ISO" ]; then
+  ISO="$SELF/systemrescue-latest.iso"
+  if is_iso "$ISO"; then
+    echo "Using the SystemRescue ISO already downloaded ($ISO)."
+  else
+    echo "==> Downloading the latest SystemRescue ISO (about 900 MB, one time)"
+    URL="https://sourceforge.net/projects/systemrescuecd/files/latest/download"
+    if command -v curl >/dev/null; then curl -fL --retry 3 -o "$ISO.part" "$URL"
+    elif command -v wget >/dev/null; then wget -O "$ISO.part" "$URL"
+    else die "need curl or wget to download the ISO (or pass one with -i)"; fi
+    is_iso "$ISO.part" || { rm -f "$ISO.part"; die "that download didn't look like a bootable ISO (network/mirror hiccup). Try again, or download one yourself from https://www.system-rescue.org/Download/ and pass it with -i"; }
+    mv "$ISO.part" "$ISO"
+  fi
+fi
+[ -f "$ISO" ] || die "ISO not found: $ISO"
 [ -f "$SELF/turbo-rescue.sh" ] || die "missing turbo-rescue.sh next to this script"
 REL="https://github.com/flesheatingbug/Turbo-Button/releases/download/latest"
 if [ ! -f "$SELF/turbobutton" ]; then

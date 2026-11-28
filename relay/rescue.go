@@ -34,7 +34,7 @@ func rescueReadme(pub string) string {
 		"1. Put a SystemRescue ISO on your Ventoy/Medicat USB (https://www.system-rescue.org).\n" +
 		"2. Copy this whole folder onto the USB's data partition.\n" +
 		"   Or make a STANDALONE stick (no Ventoy):\n" +
-		"     Linux:   sudo ./make-rescue-usb.sh -d /dev/sdX -i systemrescue.iso\n" +
+		"     Linux:   sudo ./make-rescue-usb.sh -d /dev/sdX   (downloads SystemRescue for you)\n" +
 		"     Windows: run make-rescue-usb.ps1 in an admin PowerShell (UEFI boot)\n" +
 		"3. Boot the dead PC from SystemRescue, connect WiFi (iwctl, or nmtui), become root.\n" +
 		"4. Pick the 'autoruns' boot entry, or run:  sh /path/to/turbo-rescue.sh\n" +

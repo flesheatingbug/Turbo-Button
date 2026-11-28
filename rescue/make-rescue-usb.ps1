@@ -8,11 +8,23 @@
     NOTE: a USB made on Windows this way boots via UEFI (any PC from ~2015 on). For an old
     BIOS-only PC, make the stick with the Linux script, or write the ISO with Rufus/Etcher
     and copy the turbo-rescue folder on afterwards.                                        #>
-param([Parameter(Mandatory=$true)][string]$Iso)
+param([string]$Iso)
 $ErrorActionPreference = 'Stop'
 $self = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole('Administrator')) { throw "Run this in an Administrator PowerShell." }
-if (-not (Test-Path $Iso)) { throw "ISO not found: $Iso  — download a SystemRescue amd64 ISO from https://www.system-rescue.org/Download/ and pass its path with -Iso" }
+if (-not $Iso) {
+  $Iso = Join-Path $self 'systemrescue-latest.iso'
+  if ((Test-Path $Iso) -and (Get-Item $Iso).Length -gt 400MB) {
+    Write-Host "Using the SystemRescue ISO already downloaded ($Iso)."
+  } else {
+    Write-Host "==> Downloading the latest SystemRescue ISO (about 900 MB, one time)"
+    try { Invoke-WebRequest 'https://sourceforge.net/projects/systemrescuecd/files/latest/download' -OutFile "$Iso.part" -UseBasicParsing }
+    catch { throw "couldn't download the ISO: $($_.Exception.Message). Download one from https://www.system-rescue.org/Download/ and pass it with -Iso" }
+    if ((Get-Item "$Iso.part").Length -lt 400MB) { Remove-Item "$Iso.part"; throw "that download didn't look like an ISO. Try again, or pass one with -Iso" }
+    Move-Item -Force "$Iso.part" $Iso
+  }
+}
+if (-not (Test-Path $Iso)) { throw "ISO not found: $Iso" }
 if (-not (Test-Path (Join-Path $self 'turbo-rescue.sh'))) { throw "missing turbo-rescue.sh next to this script" }
 $agent = Join-Path $self 'turbobutton'
 if (-not (Test-Path $agent)) {
