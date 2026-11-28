@@ -31,16 +31,21 @@ exec ./turbobutton --rescue
 func rescueReadme(pub string) string {
 	return "Turbo Button - rescue USB\n" +
 		"=========================\n\n" +
-		"1. Put a SystemRescue ISO on your Ventoy/Medicat USB (https://www.system-rescue.org).\n" +
-		"2. Copy this whole folder onto the USB's data partition.\n" +
-		"   Or make a STANDALONE stick (no Ventoy):\n" +
-		"     Linux:   sudo ./make-rescue-usb.sh -d /dev/sdX   (downloads SystemRescue for you)\n" +
-		"     Windows: run make-rescue-usb.ps1 in an admin PowerShell (UEFI boot)\n" +
-		"3. Boot the dead PC from SystemRescue, connect WiFi (iwctl, or nmtui), become root.\n" +
-		"4. Pick the 'autoruns' boot entry, or run:  sh /path/to/turbo-rescue.sh\n" +
-		"5. On your phone, open " + pub + " , sign in, and the PC appears under Office PCs (relay).\n" +
-		"   Run a scan: it reads the offline Windows (blue-screen codes, boot/registry health, SMART).\n\n" +
-		"Nothing on the Windows disk is changed - the scan is read-only.\n"
+		"For a PC that won't boot or keeps blue-screening. Make the stick on any spare computer\n" +
+		"with a USB stick (8 GB+). SystemRescue downloads automatically - no other files needed.\n\n" +
+		"LINUX (e.g. CachyOS):\n" +
+		"  chmod +x make-rescue-usb.sh\n" +
+		"  sudo ./make-rescue-usb.sh           # finds the USB, asks you to type ERASE\n" +
+		"  (or pass -d /dev/sdX for a specific disk, -i file.iso for your own ISO)\n\n" +
+		"WINDOWS:\n" +
+		"  Right-click make-rescue-usb.ps1 -> Run with PowerShell (as administrator).\n" +
+		"  It lists your USB drives and asks which to use.\n\n" +
+		"THEN:\n" +
+		"  1. Boot the dead PC from the USB (UEFI or BIOS), connect WiFi (iwctl, or nmtui).\n" +
+		"  2. Pick the 'autoruns' boot entry (or run: sh /path/to/turbo-rescue/turbo-rescue.sh).\n" +
+		"  3. On your phone, open " + pub + " - the PC shows under Office PCs (relay).\n" +
+		"     Run a scan: blue-screen codes, boot/registry health, accounts, SMART. Read-only.\n\n" +
+		"Nothing on the Windows disk is changed unless you choose a fix.\n"
 }
 
 func (r *Relay) uiRescue(w http.ResponseWriter, req *http.Request) {

@@ -22,8 +22,20 @@ usage(){
 while [ $# -gt 0 ]; do case "$1" in
   -d) DEV="$2"; shift 2;; -i) ISO="$2"; shift 2;; -h|--help) usage;; *) die "unknown option $1";;
 esac; done
-[ -n "$DEV" ] || usage
-[ "$(id -u)" = 0 ] || exec sudo -- "$0" -d "$DEV" -i "$ISO"
+true  # device is auto-detected below if not given
+[ "$(id -u)" = 0 ] || exec sudo -- "$0" ${DEV:+-d "$DEV"} ${ISO:+-i "$ISO"}
+if [ -z "$DEV" ]; then
+  CANDS=$(lsblk -dpno NAME,RM,TRAN 2>/dev/null | awk '($2==1)||($3=="usb"){print $1}')
+  N=$(printf '%s\n' "$CANDS" | grep -c . || true)
+  if [ "${N:-0}" -eq 0 ]; then die "no USB stick detected — plug one in, or pass -d /dev/sdX (see: lsblk -dpo NAME,SIZE,MODEL,TRAN)"; fi
+  if [ "$N" -eq 1 ]; then DEV="$CANDS"; echo "Found USB: $DEV ($(lsblk -dno SIZE,MODEL "$DEV" | tr -s ' '))";
+  else
+    echo "More than one removable disk is plugged in:"
+    printf '%s\n' "$CANDS" | while read -r d; do echo "  $d   $(lsblk -dno SIZE,MODEL "$d" | tr -s ' ')"; done
+    read -rp "Which one? (e.g. /dev/sdc): " DEV
+    [ -n "$DEV" ] || die "no device chosen"
+  fi
+fi
 [ -b "$DEV" ] || die "$DEV is not a block device. Pick a USB disk from: lsblk -dpo NAME,SIZE,MODEL,TRAN"
 if [ "$(lsblk -dno TYPE "$DEV" 2>/dev/null)" = part ]; then
   die "$DEV is a partition. Use the WHOLE disk instead, e.g. ${DEV%[0-9]*} (not ${DEV}). The script wipes and repartitions the whole stick."
