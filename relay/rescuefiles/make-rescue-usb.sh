@@ -28,9 +28,7 @@ true  # device is auto-detected below if not given
 # Tools we need; install the missing ones via the distro's package manager (we are root).
 ensure_tools(){
   local miss=""
-  command -v sgdisk     >/dev/null || miss="$miss gptfdisk"
   command -v mkfs.vfat  >/dev/null || miss="$miss dosfstools"
-  command -v partprobe  >/dev/null || miss="$miss parted"
   [ -n "$miss" ] || return 0
   echo "Missing tools needed to build the stick:$miss"
   if   command -v pacman >/dev/null; then set -- pacman -S --needed --noconfirm $miss
@@ -40,7 +38,7 @@ ensure_tools(){
   else die "please install:$miss  (couldn't find a package manager to do it automatically)"; fi
   echo "==> Installing:$miss"
   "$@" || die "couldn't install$miss automatically — install them yourself and re-run"
-  for t in sgdisk mkfs.vfat partprobe; do command -v "$t" >/dev/null || die "'$t' still missing after install"; done
+  command -v mkfs.vfat >/dev/null || die "mkfs.vfat still missing after install"
 }
 ensure_tools
 
@@ -97,39 +95,41 @@ read -rp "Type ERASE to continue: " ok; [ "$ok" = ERASE ] || die "cancelled"
 
 echo "==> Unmounting any partitions on $DEV"
 for p in $(lsblk -nro NAME "$DEV" | tail -n +2); do umount "/dev/$p" 2>/dev/null || true; done
-echo "==> Writing SystemRescue to $DEV (this takes a few minutes)"
-dd if="$ISO" of="$DEV" bs=4M status=progress conv=fsync
-sync; partprobe "$DEV" 2>/dev/null || true; sleep 2
 
-echo "==> Adding a Turbo Button data partition in the free space"
-sgdisk -e "$DEV" >/dev/null 2>&1 || true            # move backup GPT header to the end
-sgdisk -n 0:0:0 -t 0:0700 -c 0:TURBO "$DEV" >/dev/null || die "couldn't create the data partition (the stick may be too small — use a bigger one)"
-sync; partprobe "$DEV" 2>/dev/null || true; sleep 2
-# Highest-numbered partition is the one we just made.
-LAST=$(lsblk -nro NAME "$DEV" | tail -1)
-PART="/dev/$LAST"
-[ -b "$PART" ] || die "new partition $PART didn't appear; re-plug the stick and run just the format+copy steps"
-echo "==> Formatting $PART as FAT32 (TURBO)"
-mkfs.vfat -n TURBO "$PART" >/dev/null
+# SystemRescue finds its system files by the boot disk's volume label, so copy that label.
+LABEL=$(blkid -o value -s LABEL "$ISO" 2>/dev/null | head -1); LABEL=${LABEL:-RESCUE}
+LABEL=$(printf '%s' "$LABEL" | cut -c1-11)
 
-MNT=$(mktemp -d)
-mount "$PART" "$MNT"
-echo "==> Copying Turbo Button onto the stick"
-mkdir -p "$MNT/turbo-rescue"
-cp "$SELF/turbobutton" "$MNT/turbo-rescue/"
-[ -f "$SELF/turbobutton.conf" ] && cp "$SELF/turbobutton.conf" "$MNT/turbo-rescue/"
-cp "$SELF/turbo-rescue.sh" "$MNT/turbo-rescue/"
-chmod +x "$MNT/turbo-rescue/turbobutton" "$MNT/turbo-rescue/turbo-rescue.sh"
-# SystemRescue runs an 'autorun' script found on any attached filesystem when booted with the
-# 'autoruns=1' option (it's offered in the boot menu). This one launches Turbo Button.
-cat > "$MNT/autorun" <<'AR'
+echo "==> Partitioning $DEV (GPT, one FAT32 partition '$LABEL') and formatting"
+wipefs -a "$DEV" >/dev/null 2>&1 || true
+printf 'label: gpt\n,,U\n' | sfdisk "$DEV" >/dev/null || die "couldn't partition $DEV"
+sync; partprobe "$DEV" 2>/dev/null || blockdev --rereadpt "$DEV" 2>/dev/null || true; sleep 2
+case "$DEV" in *[0-9]) PART="${DEV}p1";; *) PART="${DEV}1";; esac
+[ -b "$PART" ] || { LAST=$(lsblk -nro NAME "$DEV" | tail -1); PART="/dev/$LAST"; }
+[ -b "$PART" ] || die "the new partition didn't appear; re-plug the stick and run again"
+mkfs.vfat -F 32 -n "$LABEL" "$PART" >/dev/null || die "couldn't format $PART"
+
+MISO=$(mktemp -d); MUSB=$(mktemp -d)
+echo "==> Copying SystemRescue onto the stick (a few minutes)"
+mount -o ro,loop "$ISO" "$MISO" || die "couldn't mount the ISO"
+mount "$PART" "$MUSB" || { umount "$MISO"; die "couldn't mount $PART"; }
+if ! cp -a "$MISO"/. "$MUSB"/; then umount "$MISO" "$MUSB" 2>/dev/null; die "copy failed — use a bigger stick (8 GB+)"; fi
+umount "$MISO"; rmdir "$MISO"
+
+echo "==> Adding Turbo Button"
+mkdir -p "$MUSB/turbo-rescue"
+cp "$SELF/turbobutton" "$MUSB/turbo-rescue/"
+[ -f "$SELF/turbobutton.conf" ] && cp "$SELF/turbobutton.conf" "$MUSB/turbo-rescue/"
+cp "$SELF/turbo-rescue.sh" "$MUSB/turbo-rescue/"
+chmod +x "$MUSB/turbo-rescue/turbobutton" "$MUSB/turbo-rescue/turbo-rescue.sh" 2>/dev/null || true
+# SystemRescue runs an 'autorun' on the boot medium when you pick the 'autoruns' boot entry.
+cat > "$MUSB/autorun" <<'AR'
 #!/bin/sh
-MNT=$(dirname "$0")
-exec sh "$MNT/turbo-rescue/turbo-rescue.sh"
+exec sh "$(dirname "$0")/turbo-rescue/turbo-rescue.sh"
 AR
-chmod +x "$MNT/autorun"
-sync; umount "$MNT"; rmdir "$MNT"
+chmod +x "$MUSB/autorun" 2>/dev/null || true
+sync; umount "$MUSB"; rmdir "$MUSB"
 echo
-echo "Done. Boot the dead PC from $DEV (UEFI or BIOS), connect WiFi, and run Turbo Button:"
-echo "  - easiest: at the SystemRescue boot menu pick the 'autoruns' entry, or"
-echo "  - mount the TURBO partition and run turbo-rescue/turbo-rescue.sh"
+echo "Done. Boot the dead PC from $DEV via UEFI, connect WiFi, and pick the 'autoruns' boot entry"
+echo "(or mount the stick and run turbo-rescue/turbo-rescue.sh)."
+echo "UEFI boot; for an old BIOS-only PC, use Ventoy with the ISO instead."

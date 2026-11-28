@@ -41,7 +41,7 @@ func rescueReadme(pub string) string {
 		"  Right-click make-rescue-usb.ps1 -> Run with PowerShell (as administrator).\n" +
 		"  It lists your USB drives and asks which to use.\n\n" +
 		"THEN:\n" +
-		"  1. Boot the dead PC from the USB (UEFI or BIOS), connect WiFi (iwctl, or nmtui).\n" +
+		"  1. Boot the dead PC from the USB via UEFI, connect WiFi (iwctl, or nmtui).\n" +
 		"  2. Pick the 'autoruns' boot entry (or run: sh /path/to/turbo-rescue/turbo-rescue.sh).\n" +
 		"  3. On your phone, open " + pub + " - the PC shows under Office PCs (relay).\n" +
 		"     Run a scan: blue-screen codes, boot/registry health, accounts, SMART. Read-only.\n\n" +
