@@ -269,7 +269,8 @@ On the **PCs** tab, tap **Scan QR code** for each PC. Each one keeps working in 
 Boot the dead PC from a Linux rescue USB and read its Windows off the disk, read-only, then fix it or reset a password — all from your phone over the PC's WiFi.
 
 - **Make the USB:** on your relay page, **Agent setup → Rescue USB maker** downloads a bundle with the Linux agent, your relay settings baked in, and one-step maker scripts. Two ways to build the stick from a [SystemRescue](https://www.system-rescue.org) ISO (fast boot, WiFi, and `ntfs-3g`/`smartmontools`/`chntpw` already on board):
-  - **Standalone (no Ventoy):** Linux — `sudo ./make-rescue-usb.sh -d /dev/sdX` (boots UEFI + legacy BIOS). Windows — run `make-rescue-usb.ps1` in an admin PowerShell (UEFI boot). The SystemRescue ISO downloads automatically (pass `-i`/`-Iso` to use one you already have). Each wipes the stick, writes SystemRescue, and adds Turbo Button so it auto-runs.
+  - **Boots straight into Turbo Button (recommended):** on an Arch/CachyOS box, `sudo ./build-rescue-iso.sh` builds a tiny custom image (agent + your relay settings baked in) and writes the USB. It boots BIOS or UEFI directly into Turbo Button — no full rescue OS — connects WiFi, and shows up on your relay by itself.
+  - **Full SystemRescue stick:** Linux — `sudo ./make-rescue-usb.sh -d /dev/sdX` (downloads SystemRescue). Windows — `make-rescue-usb.ps1` in an admin PowerShell.
   - **On your Ventoy/Medicat USB:** drop the SystemRescue ISO on it and copy the bundle onto the data partition.
 - **Use it:** boot the PC from SystemRescue, connect WiFi, run `sh turbo-rescue.sh`. The PC appears on your phone under Office PCs (relay). Run a scan.
 - **What the scan reads:** blue-screen stop codes from the minidumps (with a plain-language cause), whether the boot files and registry are intact (and what's recoverable from RegBack), the local accounts, and drive SMART health. Nothing on the Windows disk is changed.
