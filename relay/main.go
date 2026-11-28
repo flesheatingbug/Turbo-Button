@@ -305,6 +305,7 @@ func (r *Relay) routes() http.Handler {
 	mux.HandleFunc("POST /ui/phones/{id}/revoke", r.ui(r.uiRevoke, true))
 	mux.HandleFunc("POST /ui/agentkey", r.ui(r.uiRotate, true))
 	mux.HandleFunc("GET /ui/download", r.uiDownload)
+	mux.HandleFunc("GET /ui/rescue", r.uiRescue)
 	mux.HandleFunc("POST /ui/password", r.ui(r.uiPassword, true))
 
 	// phone app

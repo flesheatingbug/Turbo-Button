@@ -263,6 +263,18 @@ On the **PCs** tab, tap **Scan QR code** for each PC. Each one keeps working in 
 </details>
 
 <details>
+<summary><b>🚑 Rescue USB — a PC that won't boot or keeps blue-screening</b></summary>
+
+Boot the dead PC from a Linux rescue USB and read its Windows off the disk, read-only, then fix it or reset a password — all from your phone over the PC's WiFi.
+
+- **Make the USB:** on your relay page, **Agent setup → Rescue USB** downloads a bundle (the Linux agent, a launcher, and your relay settings baked in). Put a [SystemRescue](https://www.system-rescue.org) ISO on your Ventoy/Medicat USB and copy the bundle onto the data partition. (Boots fast, has WiFi, and already includes `ntfs-3g`, `smartmontools` and `chntpw`.)
+- **Use it:** boot the PC from SystemRescue, connect WiFi, run `sh turbo-rescue.sh`. The PC appears on your phone under Office PCs (relay). Run a scan.
+- **What the scan reads:** blue-screen stop codes from the minidumps (with a plain-language cause), whether the boot files and registry are intact (and what's recoverable from RegBack), the local accounts, and drive SMART health. Nothing on the Windows disk is changed.
+- **Fixes from the phone:** restore the registry from RegBack (the classic won't-boot fix), and clear a local Windows or Linux password (can't show the old one, only blank it — and it can't defeat a Microsoft-account login or BitLocker).
+
+</details>
+
+<details>
 <summary><b>🔁 Restarts and coming back later</b></summary>
 
 - **Restarts that Turbo Button starts** (Windows): it saves the session and reopens by itself after you log back in. The phone reconnects, and the before scan and work log carry on. The few files it needs while the restart is pending live in `C:\ProgramData\TurboButton` and are removed when it reopens.

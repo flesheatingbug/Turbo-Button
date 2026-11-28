@@ -85,6 +85,20 @@ var LinuxCatalog = []Action{
 			{Name: "minutes", Type: "enum", Enum: []string{"1", "3", "5"}, Desc: "how long"},
 			{Name: "target", Type: "enum", Enum: []string{"cpu", "all"}, Opt: true, Desc: "cpu or cpu+ram"}}},
 
+	{ID: "rescue_clear_password", Title: "Clear a Windows password (offline)", Category: "security", Risk: "high", Modifies: true, TimeoutMin: 10,
+		Desc: "Rescue mode. Blanks a LOCAL Windows account's password on the offline disk (chntpw). Cannot show the old password, only clear it; cannot unlock a Microsoft account or BitLocker. root = the Windows path from the rescue scan.",
+		Params: []Param{{Name: "root", Type: "string", Pattern: `^/[^\x00]{1,250}$`, Desc: "Windows root (from the scan)"}, {Name: "user", Type: "string", Pattern: `^[^\r\n:]{1,64}$`, Desc: "account name"}}},
+
+	{ID: "rescue_clear_linux_password", Title: "Clear a Linux password (offline)", Category: "security", Risk: "high", Modifies: true, TimeoutMin: 10,
+		Desc: "Rescue mode. Blanks an account's password in an offline Linux install's /etc/shadow (default root). root = that Linux root's mount path.",
+		Params: []Param{{Name: "root", Type: "string", Pattern: `^/[^\x00]{1,250}$`, Desc: "Linux root mount"}, {Name: "user", Type: "string", Opt: true, Pattern: `^[a-z_][a-z0-9_-]{0,31}$`, Desc: "user (blank = root)"}}},
+
+	{ID: "rescue_restore_registry", Title: "Restore registry from backup (offline)", Category: "repair", Risk: "high", Modifies: true, Reboot: true, TimeoutMin: 10,
+		Desc: "Rescue mode. Copies intact hives from Windows\\System32\\config\\RegBack over the live hives - the standard fix for a corrupt/0-byte SYSTEM hive stopping boot. Backs up the current ones first. root = the Windows path from the scan.",
+		Params: []Param{{Name: "root", Type: "string", Pattern: `^/[^\x00]{1,250}$`, Desc: "Windows root (from the scan)"}}},
+
+	{ID: "rescue_scan", Title: "Rescue scan (offline Windows)", Category: "diagnostics", Risk: "low", Long: true, TimeoutMin: 20,
+		Desc: "Read-only. For a Windows PC booted into this Linux rescue USB: mounts its disk read-only and reads blue-screen bug-check codes, boot-file/registry health (and what's recoverable) and drive SMART. Changes nothing on the Windows disk."},
 	{ID: "problem_check", Title: "Look into the reported problem", Category: "diagnostics", Risk: "low", Long: true, TimeoutMin: 15,
 		Desc:   "Read-only. terms = keywords from the customer's problem (e.g. \"onedrive sign login\"). Collects matching warnings/errors from the last 7 days in the journal, matching processes, systemd units and packages, and for network/sign-in problems the clock, DNS and internet reachability.",
 		Params: []Param{{Name: "terms", Type: "string", Pattern: `^[a-z0-9 ._+-]{3,200}$`, Desc: "space-separated keywords"}}},

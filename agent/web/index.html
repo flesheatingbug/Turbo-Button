@@ -374,7 +374,7 @@
 
 <script>
 "use strict";
-const PAGE_VERSION = "0.11.10";
+const PAGE_VERSION = "0.12.0";
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtBytes = (b) => { b = Number(b) || 0; const u = ["B","KB","MB","GB","TB"]; let i = 0; while (Math.abs(b) >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + " " + u[i]; };
@@ -741,8 +741,40 @@ async function startScan() {
 }
 function gbRow(k, v) { return `<div>${esc(k)}</div><div>${esc(v).replace(/\b(undefined|null|NaN)\b/g, "?")}</div>`; }
 const DEEP_WIN_TEXT = "Read-only checks that run in the background: pending Windows updates, outdated programs, system-file and Windows-image corruption, file-system errors, a malware quick scan and what's filling the disk. Worth it for slow, crashing or possibly infected PCs. Results feed into the plan.";
+function rescueCardHtml(s) {
+  if (s.mode !== "rescue") return "";
+  let h = `<div class="card"><h2>Rescue — offline Windows</h2>`;
+  if (!(s.windows || []).length) h += `<div class="mut">No Windows found on the disk. If it's BitLocker-encrypted, unlock it first; if the partition didn't mount, mount it, then rescan.</div>`;
+  for (let wi = 0; wi < (s.windows || []).length; wi++) {
+    const w = s.windows[wi], b = w.boot || {};
+    h += `<div class="li"><div class="t">${esc(w.root)}</div>`;
+    if (b.systemHiveBytes === 0) h += `<div class="sdesc" style="color:var(--bad)">SYSTEM registry is empty — won't boot.${(b.recoverableHive_SYSTEM ? " A backup exists in RegBack." : "")}</div>`;
+    if (b.pendingUpdate) h += `<div class="sdesc">A Windows update was mid-install.</div>`;
+    const recoverable = Object.keys(b).some(k => k.startsWith("recoverableHive_") && b[k]);
+    if (recoverable) h += `<button class="b2 sm" data-rescreg="${wi}">Restore registry from backup</button>`;
+    for (const d of (w.blueScreens || []).slice(0, 5)) h += `<div class="params">💥 ${esc(d.code)} ${esc(d.name)} · ${esc(d.when || "")}${d.hint ? " — " + esc(d.hint) : ""}</div>`;
+    for (const a of (w.accounts || [])) h += `<div class="row" style="margin-top:4px"><span class="grow">${esc(a.name)}${a.admin ? " (admin)" : ""}${a.disabled ? " · disabled" : ""}</span><button class="b2 sm" data-rescpw="${wi}" data-user="${esc(a.name)}">Clear password</button></div>`;
+    h += `</div>`;
+  }
+  for (const d of (s.disks || [])) if (d.smart === "FAILING") h += `<div class="li" style="color:var(--bad)">Drive ${esc(d.device)} SMART: FAILING — back up first.</div>`;
+  return h + `</div>`;
+}
 function renderScan() {
   const s = S.scan; if (!s) return;
+  if (s.mode === "rescue") {
+    $("scanView").innerHTML = rescueCardHtml(s);
+    $("scanView").querySelectorAll("[data-rescpw]").forEach(btn => btn.onclick = async () => {
+      const w = s.windows[+btn.dataset.rescpw], user = btn.dataset.user;
+      if (!await ask({ title: `Clear ${user}'s password?`, facts: ["This blanks the Windows login password for " + user, "It can't show the old password, only remove it", "Won't work for a Microsoft-account login or BitLocker"], note: "Set a new password in Windows after it boots.", ok: "Clear password", danger: true })) return;
+      try { await queue("rescue_clear_password", { root: w.root, user }, "Clear Windows password (rescue)"); toast("Clearing — see the Fix tab."); show("jobs"); } catch (e) { toast(e.message); }
+    });
+    $("scanView").querySelectorAll("[data-rescreg]").forEach(btn => btn.onclick = async () => {
+      const w = s.windows[+btn.dataset.rescreg];
+      if (!await ask({ title: "Restore registry from backup?", facts: ["Copies intact hives from RegBack over the current ones", "The standard fix for a corrupt SYSTEM hive that stops boot", "The current hives are backed up first"], ok: "Restore", danger: true })) return;
+      try { await queue("rescue_restore_registry", { root: w.root }, "Restore registry from RegBack (rescue)"); toast("Restoring — see the Fix tab."); show("jobs"); } catch (e) { toast(e.message); }
+    });
+    return;
+  }
   $("deepInfo").textContent = isLinux() ? "Read-only checks that run in the background: pending package, Flatpak and firmware updates, what's filling the disk, and a short SMART self-test on each drive (about 2 min per drive). Results feed into the plan." : DEEP_WIN_TEXT;
   const sys = s.system || {};
   let html = `<div class="card"><h2>${esc(sys.computerName || "PC")}</h2><div class="kv">
@@ -1224,8 +1256,28 @@ function remoteAccessFinding(s, find) {
   const ra = (s.startup || []).filter(x => x.enabled && startupInfo(x).advice === "check");
   if (ra.length) find("warn", "Remote-access software starts automatically", ra.map(x => x.name).join(", ") + " — ask the customer if they installed it and still use it. Scammers often leave these behind.");
 }
-function quickPlan(s) { const p = isLinux() ? quickPlanLinux(s) : quickPlanWin(s); addProblemFindings(p); return p; }
+function quickPlan(s) { const p = (S.scan && S.scan.mode === "rescue") ? { findings: [], proposals: [], manual: [] } : (isLinux() ? quickPlanLinux(s) : quickPlanWin(s)); addRescueFindings(p); addProblemFindings(p); return p; }
 // What the problem_check deep check found, at the top of the quick plan.
+function addRescueFindings(p) {
+  const r = (S.scan && S.scan.mode === "rescue") ? S.scan : null;
+  if (!r) return;
+  const F = [], M = [];
+  for (const d of (r.disks || [])) if (d.smart === "FAILING") F.push({ severity: "critical", title: `Drive ${d.device} is FAILING (SMART)`, detail: "Back up the data before anything else." });
+  for (const w of (r.windows || [])) {
+    const b = w.boot || {};
+    if (b.systemHiveBytes === 0) F.push({ severity: "critical", title: "Windows won't boot: SYSTEM registry is empty", detail: "Often fixable by restoring it from Windows\\System32\\config\\RegBack." });
+    if (b.pendingUpdate) F.push({ severity: "warn", title: "A Windows update was mid-install", detail: "A stuck update can block boot (RevertPendingActions from WinPE)." });
+    if (b.winload === false || b.ntoskrnl === false) F.push({ severity: "critical", title: "Core boot files missing", detail: "Repair with bootrec/bcdboot from install media." });
+    const bs = w.blueScreens || [];
+    if (bs.length) {
+      const top = bs[0];
+      F.push({ severity: "warn", title: `Blue screen: ${top.code} ${top.name}`, detail: `${bs.length} dump(s); newest ${top.when}. ${top.hint || ""}` });
+    }
+    for (const a of (w.recommended || [])) M.push({ title: "Rescue step", detail: a });
+  }
+  if (!F.length && !M.length) M.push({ title: "Offline scan", detail: "No blue-screen dumps or boot problems found on the disk. If it still won't boot, check BIOS boot order and the disk cable." });
+  p.findings = F.concat(p.findings || []); p.manual = M.concat(p.manual || []);
+}
 function addProblemFindings(p) {
   const d = deepResults().problem_check, r = d?.status === "done" ? d.result || {} : null;
   if (!problemText()) return;

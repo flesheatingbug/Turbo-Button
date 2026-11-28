@@ -23,7 +23,19 @@ func linuxRun(ctx context.Context, name string, env map[string]string, onLine fu
 	var err error
 	switch name {
 	case "scan":
-		res = linuxScan(ctx, onLine)
+		if hasArg("--rescue") {
+			res = rescueScan(ctx, onLine)
+		} else {
+			res = linuxScan(ctx, onLine)
+		}
+	case "rescue_scan":
+		res = rescueScan(ctx, onLine)
+	case "rescue_clear_password":
+		res, err = rescueClearWinPassword(ctx, env["PCM_root"], env["PCM_user"], onLine)
+	case "rescue_clear_linux_password":
+		res, err = rescueClearLinuxPassword(ctx, env["PCM_root"], env["PCM_user"], onLine)
+	case "rescue_restore_registry":
+		res, err = rescueRestoreRegistry(ctx, env["PCM_root"], onLine)
 	case "restore_point":
 		res, err = actSnapshot(ctx, onLine)
 	case "cleanup":
@@ -544,4 +556,31 @@ func actRemovePolicies(onLine func(string)) (any, error) {
 		note = "Restart the browsers. Backups in " + bk
 	}
 	return map[string]any{"removed": moved, "backups": bk, "note": note}, nil
+}
+
+// streamStdin runs a command, feeding it fixed input on stdin, streaming its output lines.
+func streamStdin(ctx context.Context, onLine func(string), stdin, name string, args ...string) error {
+	if !have(name) {
+		return fmt.Errorf("%s is not installed on this rescue system", name)
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+	cmd.Stdin = strings.NewReader(stdin)
+	cmd.Cancel = func() error { return killTree(cmd) }
+	cmd.WaitDelay = 15 * time.Second
+	pr, pw, _ := os.Pipe()
+	cmd.Stdout, cmd.Stderr = pw, pw
+	if err := cmd.Start(); err != nil {
+		pw.Close()
+		return err
+	}
+	pw.Close()
+	sc := bufio.NewScanner(pr)
+	sc.Buffer(make([]byte, 64*1024), 1<<20)
+	for sc.Scan() {
+		if l := strings.TrimSpace(sc.Text()); l != "" {
+			onLine(l)
+		}
+	}
+	return cmd.Wait()
 }
