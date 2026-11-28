@@ -8,11 +8,18 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	_ "embed"
 	"log"
 	"net/http"
 	"os"
 	"time"
 )
+
+//go:embed rescuefiles/make-rescue-usb.sh
+var makeUsbSh []byte
+
+//go:embed rescuefiles/make-rescue-usb.ps1
+var makeUsbPs1 []byte
 
 const rescueLauncher = `#!/bin/sh
 # Turbo Button rescue launcher. Run this after booting the PC from SystemRescue (as root).
@@ -28,8 +35,11 @@ func rescueReadme(pub string) string {
 		"=========================\n\n" +
 		"1. Put a SystemRescue ISO on your Ventoy/Medicat USB (https://www.system-rescue.org).\n" +
 		"2. Copy this whole folder onto the USB's data partition.\n" +
+		"   Or make a STANDALONE stick (no Ventoy):\n" +
+		"     Linux:   sudo ./make-rescue-usb.sh -d /dev/sdX -i systemrescue.iso\n" +
+		"     Windows: run make-rescue-usb.ps1 in an admin PowerShell (UEFI boot)\n" +
 		"3. Boot the dead PC from SystemRescue, connect WiFi (iwctl, or nmtui), become root.\n" +
-		"4. Run:  sh /path/to/turbo-rescue.sh\n" +
+		"4. Pick the 'autoruns' boot entry, or run:  sh /path/to/turbo-rescue.sh\n" +
 		"5. On your phone, open " + pub + " , sign in, and the PC appears under Office PCs (relay).\n" +
 		"   Run a scan: it reads the offline Windows (blue-screen codes, boot/registry health, SMART).\n\n" +
 		"Nothing on the Windows disk is changed - the scan is read-only.\n"
@@ -67,6 +77,8 @@ func (r *Relay) uiRescue(w http.ResponseWriter, req *http.Request) {
 	add("turbobutton", 0755, bin)
 	add("turbobutton.conf", 0600, []byte(conf))
 	add("turbo-rescue.sh", 0755, []byte(rescueLauncher))
+	add("make-rescue-usb.sh", 0755, makeUsbSh)
+	add("make-rescue-usb.ps1", 0644, makeUsbPs1)
 	add("README.txt", 0644, []byte(rescueReadme(pub)))
 	tw.Close()
 	gz.Close()

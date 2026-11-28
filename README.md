@@ -268,7 +268,9 @@ On the **PCs** tab, tap **Scan QR code** for each PC. Each one keeps working in 
 
 Boot the dead PC from a Linux rescue USB and read its Windows off the disk, read-only, then fix it or reset a password — all from your phone over the PC's WiFi.
 
-- **Make the USB:** on your relay page, **Agent setup → Rescue USB** downloads a bundle (the Linux agent, a launcher, and your relay settings baked in). Put a [SystemRescue](https://www.system-rescue.org) ISO on your Ventoy/Medicat USB and copy the bundle onto the data partition. (Boots fast, has WiFi, and already includes `ntfs-3g`, `smartmontools` and `chntpw`.)
+- **Make the USB:** on your relay page, **Agent setup → Rescue USB maker** downloads a bundle with the Linux agent, your relay settings baked in, and one-step maker scripts. Two ways to build the stick from a [SystemRescue](https://www.system-rescue.org) ISO (fast boot, WiFi, and `ntfs-3g`/`smartmontools`/`chntpw` already on board):
+  - **Standalone (no Ventoy):** Linux — `sudo ./make-rescue-usb.sh -d /dev/sdX -i systemrescue.iso` (boots UEFI + legacy BIOS). Windows — run `make-rescue-usb.ps1` in an admin PowerShell (UEFI boot). Each wipes the stick, writes SystemRescue, and adds Turbo Button so it auto-runs.
+  - **On your Ventoy/Medicat USB:** drop the SystemRescue ISO on it and copy the bundle onto the data partition.
 - **Use it:** boot the PC from SystemRescue, connect WiFi, run `sh turbo-rescue.sh`. The PC appears on your phone under Office PCs (relay). Run a scan.
 - **What the scan reads:** blue-screen stop codes from the minidumps (with a plain-language cause), whether the boot files and registry are intact (and what's recoverable from RegBack), the local accounts, and drive SMART health. Nothing on the Windows disk is changed.
 - **Fixes from the phone:** restore the registry from RegBack (the classic won't-boot fix), and clear a local Windows or Linux password (can't show the old one, only blank it — and it can't defeat a Microsoft-account login or BitLocker).
